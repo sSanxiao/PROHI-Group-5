@@ -38,12 +38,14 @@ If you are using Mac, you may need to follow install Xcode. Check the official S
 
 1. Create the environment with `python -m venv env`
 2. Activate the virtual environment for Python
-   - `source env/bin/activate` [in Linux/Mac]
-   - `.\env\Scripts\activate.bat` [in Windows command prompt]
-   - `.\env\Scripts\Activate.ps1` [in Windows PowerShell]
+   - If using Mac or Linux, type the command: `source env/bin/activate` 
+   - If using Windows:
+   - First, [set the Default Terminal Profile to CMD Terminal](https://code.visualstudio.com/docs/terminal/profiles)
+   - Then, type in the CMD terminal: `.\env\Scripts\activate.bat`
 3. Make sure that your terminal is in the environment (`env`) not in the global Python installation
 4. Install required packages `pip install -r ./requirements.txt`
 5. Check that everything is ok running `streamlit hello`
+6. Stop the terminal by pressing **Ctrl+C**
 
 ### Execution
 
