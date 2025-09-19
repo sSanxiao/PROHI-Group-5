@@ -1,79 +1,68 @@
-# PROHI Dashboard Example
+# PROHI Sepsis Prediction Dashboard
 
-# [Name of the project]
+**Team Project - PROHI Course - Group 5**
 
-_You can modify this README file with all the information that your team consider relevant for a technical audience who would like to understand your project or to run it in the future._
+**Team Members:**
+- Max Altez Linhardt
+- Khachatur Dallakyan  
+- Pratibha Rustogi
+- Qilu Wang
+- Xue Wu
 
-_Note that this file is written in **MarkDown** language. A reference is available here: <https://www.markdownguide.org/basic-syntax/>_
+![Dashboard Logo](./assets/project-logo.jpg)
 
-Include the name, logo and images refering to your project
+## Project Overview
 
-![Your dashboard](./assets/example-image.jpg)
+This dashboard demonstrates early sepsis prediction for ICU patients using machine learning techniques. The project analyzes a comprehensive dataset with 44 clinical features including vital signs, lab values, and demographics to predict sepsis onset.
 
-## Introduction
+## Dataset Setup
 
-[Project ] is an interactive web dashboard to.... 
+**Important:** You need to download the dataset before running the dashboard.
 
-The problem detected was...
+1. Download the "Prediction of Sepsis" dataset from Kaggle: https://www.kaggle.com/datasets/salikhussaini49/prediction-of-sepsis
+2. Create a `data` folder in the project root directory
+3. Place the downloaded `Dataset.csv` file in the `data/` folder
 
-The proposed solution is valuable because...
+## Installation
 
-## System description
+1. Create a virtual environment:
+   ```bash
+   python -m venv env
+   ```
 
-### Dependencies
+2. Activate the virtual environment:
+   - **Windows PowerShell:** `.\env\Scripts\Activate.ps1`
+   - **Windows Command Prompt:** `.\env\Scripts\activate.bat`
+   - **Linux/Mac:** `source env/bin/activate`
 
-Tested on Python 3.12.7 with the following packages:
-  - Jupyter v1.1.1
-  - Streamlit v1.46.1
-  - Seaborn v0.13.2
-  - Plotly v6.2.0
-  - Scikit-Learn v1.7.0
-  - shap v0.48.0
+3. Install required packages:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-### Installation
+## Running the Dashboard
 
-Run the commands below in a terminal to configure the project and install the package dependencies for the first time.
+Make sure your virtual environment is activated, then run:
 
-If you are using Mac, you may need to follow install Xcode. Check the official Streamlit documentation [here](https://docs.streamlit.io/get-started/installation/command-line#prerequisites). 
-
-1. Create the environment with `python -m venv env`
-2. Activate the virtual environment for Python
-   - If using Mac or Linux, type the command: `source env/bin/activate` 
-   - If using Windows:
-   - First, [set the Default Terminal Profile to CMD Terminal](https://code.visualstudio.com/docs/terminal/profiles)
-   - Then, type in the CMD terminal: `.\env\Scripts\activate.bat`
-3. Make sure that your terminal is in the environment (`env`) not in the global Python installation
-4. Install required packages `pip install -r ./requirements.txt`
-5. Check that everything is ok running `streamlit hello`
-6. Stop the terminal by pressing **Ctrl+C**
-
-### Execution
-
-To run the dashboard execute the following command:
-
-```
-> streamlit run Dashboard.py
-# If the command above fails, use:
-> python -m streamlit run Dashboard.py
+```bash
+streamlit run Dashboard.py
 ```
 
+If the above command fails, try:
+```bash
+python -m streamlit run Dashboard.py
+```
 
-### Creating pre-trained models for the web dashboadr 
+The dashboard will open in your web browser at `http://localhost:8501`
 
-⚠️ **NOTE:** In the predictive analytics tab, the web dashboard is looking for a pre-trained model in the folder `assets/`. The first time that you execute the application, it will show an error saying that such file does not exist. Therefore, you need to execute the notebook inside the folder `jupyter-notebook/` to create the pre-trained model.
+## Dependencies
 
-This logic resembles the expected pipeline, where the jupyter notebooks are used to iterate the data modeling part until a satisfactory trained model is created, and the streamlit scripts are only in charge of rendering the user-facing interface to generate the prediction for new data. In practice, the data science pipeline is completely independent from the web dashboard, and both are connected via the pre-trained model. 
-
-## Contributors
-
-_Add the project's authors, contact information, and links to their websites or portfolios._
-
-
-### test by Xue Wu
-### the best coffee master Max! 
-### Qilu Wang is useless in this task
-### Khachatur has been here
-
-change
-
-finally made it pratibha 
+- Python 3.8+
+- Streamlit
+- Pandas
+- NumPy
+- Matplotlib
+- Seaborn
+- Scikit-learn
+- SHAP
+- Pillow (PIL)
