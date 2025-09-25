@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-import xgboost as xgb
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
@@ -10,14 +10,12 @@ import joblib
 import os
 
 class TreeVotingModel:
-    def __init__(self, n_trees=35):
-        self.model = xgb.XGBClassifier(
+    def __init__(self, n_trees=100):
+        self.model = RandomForestClassifier(
             n_estimators=n_trees,
-            learning_rate=0.1,
             max_depth=6,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            random_state=42
+            random_state=42,
+            n_jobs=-1  # Use all CPU cores
         )
         self.scaler = StandardScaler()
         
@@ -33,9 +31,7 @@ class TreeVotingModel:
         
         # Define columns to drop
         columns_drop = {
-            'Unnamed: 0', 'SBP', 'DBP', 'EtCO2', 'BaseExcess', 'HCO3',
-            'pH', 'PaCO2', 'Alkalinephos', 'Calcium', 'Magnesium',
-            'Phosphate', 'Potassium', 'PTT', 'Fibrinogen', 'Unit1', 'Unit2'
+            'Unnamed: 0', 'Unit1', 'Unit2'
         }
         
         # Drop specified columns
@@ -98,85 +94,52 @@ class TreeVotingModel:
         return self
     
     def get_tree_predictions(self, X):
-        """Get raw predictions from each tree (scores from 0 to 1)"""
-        dtrain = xgb.DMatrix(X)
-        trees_pred = self.model.get_booster().predict(
-            dtrain,
-            pred_contribs=True,
-            approx_contribs=False
-        )
+        """Get predictions from each tree"""
+        tree_predictions = []
+        tree_scores = []
         
-        # Convert scores to probabilities with very low temperature for extreme predictions
-        temperature = 0.1  # Very low temperature makes predictions more extreme
-        raw_scores = trees_pred[:, :-1]  # Exclude bias term
-        scaled_scores = raw_scores / temperature
-        tree_scores = 1 / (1 + np.exp(-scaled_scores))
+        # Get predictions from each tree in the forest
+        for tree in self.model.estimators_:
+            pred = tree.predict(X)[0]
+            prob = tree.predict_proba(X)[0]
+            tree_predictions.append(int(pred))
+            tree_scores.append(prob[1])  # Probability of class 1 (Sepsis)
         
-        return np.clip(tree_scores, 0, 1)
+        return np.array(tree_predictions), np.array(tree_scores)
     
     def predict(self, X, threshold=0.5):
-        tree_scores = self.get_tree_predictions(X)
-        mean_scores = np.mean(tree_scores, axis=1)  # Simple average of tree predictions
-        return (mean_scores >= threshold).astype(int)
-    
-    def find_best_threshold(self, y_true, y_pred_proba):
-        """Find best threshold balancing precision and recall"""
-        thresholds = np.linspace(0.1, 0.9, 81)  # Try thresholds from 0.1 to 0.9
-        best_f1 = 0
-        best_threshold = 0.5
-        best_metrics = None
-        
-        for threshold in thresholds:
-            y_pred = (y_pred_proba >= threshold).astype(int)
-            precision = precision_score(y_true, y_pred)
-            recall = recall_score(y_true, y_pred)
-            f1 = f1_score(y_true, y_pred)
-            
-            # Update if better F1 score
-            if f1 > best_f1:
-                best_f1 = f1
-                best_threshold = threshold
-                best_metrics = {
-                    'threshold': threshold,
-                    'precision': precision,
-                    'recall': recall,
-                    'f1': f1
-                }
-        
-        return best_metrics
+        """Make predictions using mean tree probabilities"""
+        tree_scores = self.get_tree_predictions(X)[1]  # Get probabilities
+        mean_scores = np.mean(tree_scores)  # Average probability across trees
+        return 1 if mean_scores >= threshold else 0
     
     def evaluate(self, X_test, y_test, threshold=None):
         """Evaluate model performance"""
         print("\nEvaluating model...")
         
-        # Get predictions
-        tree_scores = self.get_tree_predictions(X_test)
-        mean_scores = np.mean(tree_scores, axis=1)
+        # Get predictions from all trees
+        tree_preds, tree_scores = self.get_tree_predictions(X_test)
+        mean_scores = np.mean(tree_scores)
         
-        # Find best threshold if not provided
+        # Make prediction based on threshold
         if threshold is None:
-            print("\nFinding best threshold...")
-            metrics = self.find_best_threshold(y_test, mean_scores)
-            threshold = metrics['threshold']
-            print(f"Best threshold: {threshold:.3f}")
-            print(f"At best threshold - Precision: {metrics['precision']:.3f}, Recall: {metrics['recall']:.3f}, F1: {metrics['f1']:.3f}")
+            threshold = 0.5
         
-        # Make predictions with chosen threshold
-        y_pred = (mean_scores >= threshold).astype(int)
+        prediction = 1 if mean_scores >= threshold else 0
         
         # Calculate metrics
-        precision = precision_score(y_test, y_pred)
-        recall = recall_score(y_test, y_pred)
-        f1 = f1_score(y_test, y_pred)
+        precision = precision_score(y_test, [prediction])
+        recall = recall_score(y_test, [prediction])
+        f1 = f1_score(y_test, [prediction])
         
         # Calculate tree disagreement
-        disagreement = np.std(tree_scores, axis=1)
+        disagreement = np.std(tree_scores)
         
         print("\nPrediction Distribution:")
-        print(f"Mean: {tree_scores.mean():.3f}")
-        print(f"Std: {tree_scores.std():.3f}")
-        print(f"Min: {tree_scores.min():.3f}")
-        print(f"Max: {tree_scores.max():.3f}")
+        print(f"Mean: {mean_scores:.3f}")
+        print(f"Std: {disagreement:.3f}")
+        print(f"Min: {np.min(tree_scores):.3f}")
+        print(f"Max: {np.max(tree_scores):.3f}")
         print(f"% Strong positive (>0.8): {(tree_scores > 0.8).mean() * 100:.1f}%")
         print(f"% Strong negative (<0.2): {(tree_scores < 0.2).mean() * 100:.1f}%")
         
@@ -185,40 +148,7 @@ class TreeVotingModel:
         print(f"Recall: {recall:.3f}")
         print(f"F1: {f1:.3f}")
         
-        print("\nTree Disagreement:")
-        print(f"Mean: {disagreement.mean():.3f}")
-        print(f"Max: {disagreement.max():.3f}")
-        print(f"% High disagreement (std>0.2): {(disagreement > 0.2).mean() * 100:.1f}%")
-        
-        # First figure: Distribution plots with original style
-        plt.figure(figsize=(15, 5))
-        
-        # Plot 1: Overall prediction distribution
-        plt.subplot(121)
-        sns.histplot(tree_scores.flatten(), bins=50)
-        plt.axvline(x=threshold, color='r', linestyle='--', label=f'Threshold ({threshold:.2f})')
-        plt.title('Distribution of Tree Predictions')
-        plt.xlabel('Prediction Score')
-        plt.ylabel('Count')
-        plt.legend()
-        
-        # Plot 2: Mean predictions by true class
-        plt.subplot(122)
-        sns.histplot(data=pd.DataFrame({
-            'Mean Score': mean_scores,
-            'Actual': y_test
-        }), x='Mean Score', hue='Actual', bins=50)
-        plt.axvline(x=threshold, color='r', linestyle='--', label=f'Threshold ({threshold:.2f})')
-        plt.title('Distribution of Mean Predictions by Class')
-        plt.xlabel('Mean Prediction Score')
-        plt.ylabel('Count')
-        plt.legend()
-        
-        plt.tight_layout()
-        plt.savefig('assets/prediction_distributions.png', dpi=300, bbox_inches='tight')
-        plt.show()
-        
-        # Second figure: Confusion Matrix with enhanced style
+        # Create confusion matrix visualization
         plt.style.use('seaborn-v0_8')
         plt.rcParams['figure.dpi'] = 300
         plt.rcParams['savefig.dpi'] = 300
@@ -226,71 +156,28 @@ class TreeVotingModel:
         plt.rcParams['axes.titlesize'] = 14
         plt.rcParams['axes.labelsize'] = 12
         
-        # Create confusion matrix figure
         plt.figure(figsize=(10, 8))
-        cm = confusion_matrix(y_test, y_pred)
+        cm = confusion_matrix(y_test, [prediction])
         
         # Calculate percentages
-        cm_norm = cm.astype('float') / cm.sum()  # Normalize by total samples
+        cm_norm = cm.astype('float') / cm.sum()
         
-        # Create the base heatmap without annotations
-        sns.heatmap(cm, cmap='Blues', annot=False,
+        # Create heatmap
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
                    xticklabels=['No Sepsis', 'Sepsis'],
-                   yticklabels=['No Sepsis', 'Sepsis'],
-                   cbar_kws={'label': 'Count'})
+                   yticklabels=['No Sepsis', 'Sepsis'])
         
-        # Add annotations with both count and percentage
-        for i in range(cm.shape[0]):
-            for j in range(cm.shape[1]):
-                # Calculate percentage of total
-                percentage = cm_norm[i, j] * 100
-                
-                # Add count and percentage
-                text = f'{cm[i, j]}\n({percentage:.1f}% of total)'
-                
-                plt.text(j + 0.5, i + 0.5, text,
-                        ha='center', va='center',
-                        fontsize=12, fontweight='bold',
-                        color='black' if cm_norm[i, j] < 0.5 else 'white')
-        
-        plt.title('Confusion Matrix\nPredicted vs Actual', pad=20, fontsize=16, fontweight='bold')
-        plt.xlabel('Predicted Label', labelpad=10)
-        plt.ylabel('Actual Label', labelpad=10)
-        
-        # Add summary statistics
-        stats_text = (
-            f'Model Performance Metrics:\n'
-            f'Precision: {precision:.3f}\n'
-            f'Recall: {recall:.3f}\n'
-            f'F1 Score: {f1:.3f}\n\n'
-            f'Total Samples: {cm.sum()}\n'
-            f'True Negatives: {cm[0,0]}\n'
-            f'False Positives: {cm[0,1]}\n'
-            f'False Negatives: {cm[1,0]}\n'
-            f'True Positives: {cm[1,1]}'
-        )
-        
-        # Add text box with statistics
-        plt.text(2.5, 0.5, stats_text,
-                bbox=dict(facecolor='white', alpha=0.8, edgecolor='gray'),
-                fontsize=10,
-                transform=plt.gca().transAxes)
+        plt.title('Confusion Matrix\nPredicted vs Actual')
+        plt.xlabel('Predicted Label')
+        plt.ylabel('Actual Label')
         
         plt.tight_layout()
         plt.savefig('assets/confusion_matrix.png', 
-                    dpi=300, 
-                    bbox_inches='tight',
-                    facecolor='white',
-                    edgecolor='none')
+                   dpi=300, 
+                   bbox_inches='tight',
+                   facecolor='white',
+                   edgecolor='none')
         plt.show()
-        
-        # Print confusion matrix details
-        print("\nConfusion Matrix Details:")
-        print(f"Total Samples: {cm.sum()}")
-        print(f"True Negatives: {cm[0,0]} ({cm[0,0]/cm.sum():.1%} of total)")
-        print(f"False Positives: {cm[0,1]} ({cm[0,1]/cm.sum():.1%} of total)")
-        print(f"False Negatives: {cm[1,0]} ({cm[1,0]/cm.sum():.1%} of total)")
-        print(f"True Positives: {cm[1,1]} ({cm[1,1]/cm.sum():.1%} of total)")
         
         return {
             'threshold': threshold,
@@ -298,9 +185,7 @@ class TreeVotingModel:
             'recall': recall,
             'f1': f1,
             'tree_scores': tree_scores,
-            'disagreement': disagreement,
-            'confusion_matrix': cm,
-            'confusion_matrix_norm': cm_norm
+            'disagreement': disagreement
         }
     
     def save(self, path):
@@ -340,4 +225,4 @@ if __name__ == "__main__":
     results = model.evaluate(X_test, y_test, threshold=0.5)
     
     # Save model
-    model.save('models/tree_voting_model.pkl') 
+    model.save('models/random_forest_model.pkl') 

@@ -13,8 +13,8 @@ warnings.filterwarnings('ignore')
 
 # ==================== CONFIGURATION ====================
 CONFIG = {
-    'THRESHOLD_SEPSIS': 0.51,      # Above this = Sepsis
-    'THRESHOLD_NO_SEPSIS': 0.49,   # Below this = No Sepsis  
+    'THRESHOLD_SEPSIS': 0.55,      # Above this = Sepsis
+    'THRESHOLD_NO_SEPSIS': 0.45,   # Below this = No Sepsis  
     'MODEL_PATH': 'models/xgboost.pkl',
     'LOGO_PATH': './assets/project-logo.jpg',
     'CONSENSUS_STRONG': 80,
@@ -192,7 +192,7 @@ def get_individual_tree_predictions(model, X):
     if XGBOOST_AVAILABLE and hasattr(model, 'get_booster'):  # XGBoost model
         dmatrix = xgb.DMatrix(X)
         
-        # Get raw predictions from each tree
+        # Get predictions exactly like tree_voting_model.py
         trees_pred = model.get_booster().predict(
             dmatrix,
             pred_contribs=True,
@@ -205,11 +205,15 @@ def get_individual_tree_predictions(model, X):
         scaled_scores = raw_scores / temperature
         tree_scores = 1 / (1 + np.exp(-scaled_scores))
         
-        # Reshape to get individual tree predictions (all trees)
-        tree_scores = tree_scores.flatten()  # This should give us all trees
+        # Clip values between 0 and 1
+        tree_scores = np.clip(tree_scores, 0, 1)
+        
+        # Flatten to get one score per tree
+        tree_scores = tree_scores.flatten()
         tree_predictions = (tree_scores >= 0.5).astype(int)
         
-        print(f"Number of trees in predictions: {len(tree_scores)}")  # Debug print
+        print(f"Tree predictions shape: {tree_scores.shape}")
+        print(f"Sample predictions from trees: {tree_scores[:5]}")
         
     else:  # Random Forest or other models
         tree_predictions = []
