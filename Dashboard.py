@@ -13,45 +13,93 @@ warnings.filterwarnings('ignore')
 
 # ==================== CONFIGURATION ====================
 CONFIG = {
-    'THRESHOLD_SEPSIS': 0.6,      # Above this = Sepsis
-    'THRESHOLD_NO_SEPSIS': 0.3,   # Below this = No Sepsis  
-    'MODEL_PATH': 'models/xgboost_model.pkl',
+    'THRESHOLD_SEPSIS': 0.51,      # Above this = Sepsis
+    'THRESHOLD_NO_SEPSIS': 0.49,   # Below this = No Sepsis  
+    'MODEL_PATH': 'models/xgboost.pkl',
     'LOGO_PATH': './assets/project-logo.jpg',
-    'PARLIAMENT_SIZE': 15,
     'CONSENSUS_STRONG': 80,
     'CONSENSUS_MODERATE': 60,
     'TOP_FEATURES_COUNT': 10
 }
 
+# Add after CONFIG and before FEATURE_COLUMNS
+SAMPLE_PATIENTS = None
+
+@st.cache_resource
+def load_sample_patients():
+    """Load and prepare a balanced set of sample patients"""
+    try:
+        # Load data
+        df = pd.read_csv('./data/cleaned_dataset.csv')
+        
+        # Drop specified columns (matching tree_voting_model.py)
+        columns_drop = {
+            'Unnamed: 0', 'SBP', 'DBP', 'EtCO2', 'BaseExcess', 'HCO3',
+            'pH', 'PaCO2', 'Alkalinephos', 'Calcium', 'Magnesium',
+            'Phosphate', 'Potassium', 'PTT', 'Fibrinogen', 'Unit1', 'Unit2'
+        }
+        df = df.drop(columns=[col for col in columns_drop if col in df.columns])
+        
+        # Separate sepsis and non-sepsis cases
+        sepsis_cases = df[df['SepsisLabel'] == 1]
+        non_sepsis_cases = df[df['SepsisLabel'] == 0]
+        
+        # Sample equal numbers from each class (100 from each)
+        n_samples = 100
+        balanced_sepsis = sepsis_cases.sample(n=n_samples, random_state=42)
+        balanced_non_sepsis = non_sepsis_cases.sample(n=n_samples, random_state=42)
+        
+        # Combine and shuffle
+        balanced_df = pd.concat([balanced_sepsis, balanced_non_sepsis])
+        balanced_df = balanced_df.sample(frac=1, random_state=42).reset_index(drop=True)
+        
+        print(f"Loaded {len(balanced_df)} sample patients ({n_samples} sepsis, {n_samples} non-sepsis)")
+        return balanced_df
+        
+    except Exception as e:
+        st.error(f"Error loading sample patients: {e}")
+        return None
+
+# Columns to drop (matching tree_voting_model.py)
+COLUMNS_DROP = {
+    'Unnamed: 0', 'SBP', 'DBP', 'EtCO2', 'BaseExcess', 'HCO3',
+    'pH', 'PaCO2', 'Alkalinephos', 'Calcium', 'Magnesium',
+    'Phosphate', 'Potassium', 'PTT', 'Fibrinogen', 'Unit1', 'Unit2'
+}
+
+# Update FEATURE_COLUMNS to match exactly what the model expects, in the same order
 FEATURE_COLUMNS = [
-    'HR', 'O2Sat', 'Temp', 'SBP', 'MAP', 'DBP', 'Resp', 'EtCO2', 
-    'BaseExcess', 'HCO3', 'FiO2', 'pH', 'PaCO2', 'SaO2', 'AST', 'BUN',
-    'Alkalinephos', 'Calcium', 'Chloride', 'Creatinine', 'Bilirubin_direct',
-    'Glucose', 'Lactate', 'Magnesium', 'Phosphate', 'Potassium',
-    'Bilirubin_total', 'TroponinI', 'Hct', 'Hgb', 'PTT', 'WBC',
-    'Fibrinogen', 'Platelets', 'Age', 'Gender', 'HospAdmTime'
+    'Hour', 'HR', 'O2Sat', 'Temp', 'MAP', 'Resp', 'FiO2', 'SaO2', 'AST', 'BUN',
+    'Chloride', 'Creatinine', 'Bilirubin_direct', 'Glucose', 'Lactate',
+    'Bilirubin_total', 'TroponinI', 'Hct', 'Hgb', 'WBC', 'Platelets',
+    'Age', 'Gender', 'HospAdmTime', 'ICULOS'
 ]
 
+# Update FEATURE_CATEGORIES to maintain the same order
 FEATURE_CATEGORIES = {
-    "Vital Signs": ['HR', 'O2Sat', 'Temp', 'SBP', 'MAP', 'DBP', 'Resp', 'EtCO2'],
-    "Blood Gas": ['BaseExcess', 'HCO3', 'FiO2', 'pH', 'PaCO2', 'SaO2'],
-    "Organ Function": ['AST', 'BUN', 'Alkalinephos', 'Creatinine'],
-    "Metabolic": ['Calcium', 'Chloride', 'Glucose', 'Lactate', 'Magnesium', 'Phosphate', 'Potassium'],
-    "Hematology": ['Bilirubin_direct', 'Bilirubin_total', 'TroponinI', 'Hct', 'Hgb', 'PTT', 'WBC', 'Fibrinogen', 'Platelets'],
+    "Time Features": ['Hour', 'ICULOS'],
+    "Vital Signs": ['HR', 'O2Sat', 'Temp', 'MAP', 'Resp'],
+    "Blood Gas": ['FiO2', 'SaO2'],
+    "Organ Function": ['AST', 'BUN', 'Creatinine'],
+    "Metabolic": ['Chloride', 'Glucose', 'Lactate'],
+    "Hematology": ['Bilirubin_direct', 'Bilirubin_total', 'TroponinI', 'Hct', 'Hgb', 'WBC', 'Platelets'],
     "Demographics": ['Age', 'Gender', 'HospAdmTime']
 }
 
+# Update NORMAL_RANGES to include new features
 NORMAL_RANGES = {
-    'HR': (60, 100), 'O2Sat': (95, 100), 'Temp': (36.1, 37.2), 'SBP': (90, 140), 
-    'MAP': (70, 100), 'DBP': (60, 90), 'Resp': (12, 20), 'pH': (7.35, 7.45),
-    'Glucose': (70, 140), 'Lactate': (0.5, 2.2), 'WBC': (4.0, 11.0), 'Hct': (38, 52),
-    'Hgb': (12, 18), 'Platelets': (150, 450), 'Age': (18, 100),
-    'BaseExcess': (-2, 2), 'HCO3': (22, 26), 'FiO2': (21, 100), 'PaCO2': (35, 45),
-    'SaO2': (95, 100), 'AST': (10, 40), 'BUN': (7, 20), 'Alkalinephos': (44, 147),
-    'Calcium': (8.5, 10.5), 'Chloride': (96, 106), 'Creatinine': (0.6, 1.3),
-    'Bilirubin_direct': (0, 0.3), 'Magnesium': (1.7, 2.2), 'Phosphate': (2.5, 4.5),
-    'Potassium': (3.5, 5.0), 'Bilirubin_total': (0.2, 1.2), 'TroponinI': (0, 0.04),
-    'PTT': (25, 35), 'Fibrinogen': (200, 400), 'EtCO2': (35, 45), 'HospAdmTime': (0, 168)
+    'HR': (60, 100), 'O2Sat': (95, 100), 'Temp': (36.1, 37.2),
+    'MAP': (70, 100), 'Resp': (12, 20),
+    'FiO2': (21, 100), 'SaO2': (95, 100),
+    'AST': (10, 40), 'BUN': (7, 20),
+    'Glucose': (70, 140), 'Lactate': (0.5, 2.2),
+    'Bilirubin_direct': (0, 0.3),
+    'Bilirubin_total': (0.2, 1.2), 'TroponinI': (0, 0.04),
+    'Hct': (38, 52), 'Hgb': (12, 18), 'WBC': (4.0, 11.0),
+    'Platelets': (150, 450),
+    'Age': (18, 100), 'HospAdmTime': (0, 168),
+    'Chloride': (96, 106), 'Creatinine': (0.6, 1.3),
+    'Hour': (0, 24), 'ICULOS': (0, 1000)  # Added ranges for time features
 }
 
 st.set_page_config(
@@ -101,8 +149,8 @@ st.markdown("""
 @st.cache_resource
 def load_model():
     try:
-        model = joblib.load(CONFIG['MODEL_PATH'])
-        return model
+        data = joblib.load(CONFIG['MODEL_PATH'])
+        return data
     except Exception as e:
         st.error(f"Error loading model: {e}")
         return None
@@ -120,66 +168,79 @@ def get_input_constraints(feature):
         return 0.0, 10000.0
 
 def generate_random_patient_data():
-    """Generate realistic random medical values within very wide UI constraints"""
-    np.random.seed()  # Ensure randomness
+    """Select a random real patient from our balanced sample set"""
+    global SAMPLE_PATIENTS
     
-    random_data = {}
+    # Load sample patients if not already loaded
+    if SAMPLE_PATIENTS is None:
+        SAMPLE_PATIENTS = load_sample_patients()
+        if SAMPLE_PATIENTS is None:
+            return None
     
-    # Generate values with some probability of being abnormal
+    # Select a random patient
+    random_patient = SAMPLE_PATIENTS.sample(n=1).iloc[0]
+    
+    # Convert to dictionary with only the features we need
+    patient_data = {}
     for feature in FEATURE_COLUMNS:
-        if feature == 'Gender':
-            random_data[feature] = np.random.choice([0, 1])  # 0=Female, 1=Male
-            
-        elif feature in ['Unit1', 'Unit2']:
-            # Unit1 and Unit2 are complementary (Unit1 + Unit2 = 1)
-            if feature == 'Unit1':
-                random_data[feature] = np.random.choice([0, 1])
-            else:  # Unit2
-                random_data[feature] = 1 - random_data['Unit1']
-                
-        elif feature in NORMAL_RANGES:
-            normal_min, normal_max = NORMAL_RANGES[feature]
-            
-            # 70% chance of normal values, 30% chance of abnormal
-            if np.random.random() < 0.7:
-                # Normal range with some variation
-                value = np.random.uniform(normal_min, normal_max)
-            else:
-                # Abnormal values - much wider range but still reasonable
-                if np.random.random() < 0.5:
-                    # Below normal - allow very low values
-                    low_bound = max(0.1, normal_min * 0.1) if normal_min > 0 else normal_min * 2
-                    value = np.random.uniform(low_bound, normal_min)
-                else:
-                    # Above normal - allow high values but not extreme
-                    high_bound = normal_max * 3.0
-                    value = np.random.uniform(normal_max, high_bound)
-            
-            # Round to appropriate decimal places
-            if feature in ['HR', 'Age', 'Resp', 'FiO2', 'SBP', 'MAP', 'DBP', 'WBC', 'Platelets', 'Alkalinephos', 'Fibrinogen']:
-                random_data[feature] = int(round(value))
-            else:
-                random_data[feature] = round(value, 2)
-        else:
-            # Fallback for any remaining features - wider range
-            random_data[feature] = round(np.random.uniform(0.1, 500.0), 2)
+        patient_data[feature] = random_patient[feature]
     
-    return random_data
+    return patient_data
 
-def create_advisory_board_visualization(tree_predictions, tree_scores):
-    n_trees = len(tree_predictions)
+def get_individual_tree_predictions(model, X):
+    """Get predictions from each tree, matching tree_voting_model.py logic exactly"""
+    if XGBOOST_AVAILABLE and hasattr(model, 'get_booster'):  # XGBoost model
+        dmatrix = xgb.DMatrix(X)
+        
+        # Get raw predictions from each tree
+        trees_pred = model.get_booster().predict(
+            dmatrix,
+            pred_contribs=True,
+            approx_contribs=False
+        )
+        
+        # Convert scores to probabilities with temperature scaling
+        temperature = 0.1  # Same as tree_voting_model.py
+        raw_scores = trees_pred[:, :-1]  # Exclude bias term
+        scaled_scores = raw_scores / temperature
+        tree_scores = 1 / (1 + np.exp(-scaled_scores))
+        
+        # Reshape to get individual tree predictions (all trees)
+        tree_scores = tree_scores.flatten()  # This should give us all trees
+        tree_predictions = (tree_scores >= 0.5).astype(int)
+        
+        print(f"Number of trees in predictions: {len(tree_scores)}")  # Debug print
+        
+    else:  # Random Forest or other models
+        tree_predictions = []
+        tree_scores = []
+        for tree in model.estimators_:
+            pred = tree.predict(X)[0]
+            prob = tree.predict_proba(X)[0]
+            tree_predictions.append(int(pred))
+            tree_scores.append(prob)  # [prob_class0, prob_class1]
+        tree_predictions = np.array(tree_predictions)
+        tree_scores = np.array(tree_scores)
+    
+    return tree_predictions, tree_scores
+
+def create_advisory_board_visualization(tree_predictions, tree_scores, n_estimators):
+    """Create visualization of tree predictions"""
+    print(f"Visualization - Number of predictions: {len(tree_predictions)}")  # Debug print
+    print(f"Visualization - Number of scores: {len(tree_scores)}")  # Debug print
+    
+    n_trees = n_estimators  # Use passed number of trees
     threshold_sepsis = CONFIG['THRESHOLD_SEPSIS']
     threshold_no_sepsis = CONFIG['THRESHOLD_NO_SEPSIS']
     
     decisions = []
     colors = []
     
-    # For Random Forest: tree_scores are probabilities for class 1 (Sepsis)
-    # For XGBoost: tree_scores are raw scores that need interpretation
+    # For XGBoost: tree_scores are probabilities
     for i, score in enumerate(tree_scores):
         if hasattr(score, '__len__') and len(score) > 1:  # Random Forest probability array
             sepsis_prob = score[1]  # Probability of class 1 (Sepsis)
-        else:  # Single score (XGBoost or already extracted probability)
+        else:  # XGBoost probability
             sepsis_prob = float(score)
         
         if sepsis_prob >= threshold_sepsis:
@@ -196,6 +257,7 @@ def create_advisory_board_visualization(tree_predictions, tree_scores):
     no_sepsis_count = decisions.count("No Sepsis")
     uncertain_count = decisions.count("Uncertain")
     
+    # Create semicircle arrangement for all trees
     angles = np.linspace(0, np.pi, n_trees)
     x = np.cos(angles)
     y = np.sin(angles)
@@ -206,12 +268,12 @@ def create_advisory_board_visualization(tree_predictions, tree_scores):
         x=x, y=y,
         mode='markers',
         marker=dict(
-            size=CONFIG['PARLIAMENT_SIZE'],
+            size=12,  # Slightly smaller size to fit all trees
             color=colors,
-            line=dict(width=2, color='white'),
+            line=dict(width=1, color='white'),
             symbol='circle'
         ),
-        text=[f"AI Advisor {i+1}<br>Decision: {dec}<br>Sepsis Prob: {score[1] if hasattr(score, '__len__') and len(score) > 1 else score:.3f}" 
+        text=[f"AI Advisor {i+1}<br>Decision: {dec}<br>Sepsis Prob: {score:.3f}" 
               for i, (dec, score) in enumerate(zip(decisions, tree_scores))],
         hovertemplate='%{text}<extra></extra>',
         showlegend=False
@@ -236,30 +298,6 @@ def create_advisory_board_visualization(tree_predictions, tree_scores):
     
     return fig, sepsis_count, no_sepsis_count, uncertain_count
 
-def get_individual_tree_predictions(model, X):
-    tree_predictions = []
-    tree_scores = []
-    
-    if XGBOOST_AVAILABLE and hasattr(model, 'get_booster'):  # XGBoost model
-        dmatrix = xgb.DMatrix(X)
-        
-        # Get predictions from each tree (boosting rounds)
-        for i in range(model.n_estimators):
-            tree_score = model.get_booster().predict(dmatrix, iteration_range=(i, i+1))[0]
-            # Convert XGBoost logit to probability
-            tree_prob = 1 / (1 + np.exp(-tree_score))
-            tree_scores.append(tree_prob)
-            tree_predictions.append(1 if tree_prob > 0.5 else 0)
-    
-    else:  # Random Forest or other models
-        for tree in model.estimators_:
-            pred = tree.predict(X)[0]
-            prob = tree.predict_proba(X)[0]
-            tree_predictions.append(int(pred))  # Ensure integer: 0 or 1
-            tree_scores.append(prob)  # Keep full probability array [prob_class0, prob_class1]
-    
-    return tree_predictions, tree_scores
-
 def main():
     st.markdown('<h1 class="main-header">🩺 PROHI Sepsis Prediction Dashboard</h1>', unsafe_allow_html=True)
     st.markdown('<h2 class="sub-header">AI Advisory Board - XGBoost Ensemble for Sepsis Detection</h2>', unsafe_allow_html=True)
@@ -272,9 +310,36 @@ def main():
     individual trees vote and their continuous scores combine for the final prediction.
     """)
     
-    model = load_model()
-    if model is None:
+    # Load sample patients at startup
+    global SAMPLE_PATIENTS
+    if SAMPLE_PATIENTS is None:
+        SAMPLE_PATIENTS = load_sample_patients()
+        if SAMPLE_PATIENTS is None:
+            st.error("Could not load sample patients. Please check the data file.")
+            return
+    
+    data = load_model()
+    if data is None:
         st.error("Could not load the trained model. Please ensure the model file exists.")
+        return
+    
+    # Extract model from loaded data
+    model = data['model']
+    scaler = data['scaler']
+    model_features = data['features']  # Get the exact features from the model
+    
+    # Debug print for model info
+    print("\nModel Information:")
+    print(f"Number of trees (n_estimators): {model.n_estimators}")
+    print(f"Model type: {type(model)}")
+    print(f"Model parameters: {model.get_params()}")
+    
+    # Verify feature alignment
+    if model_features != FEATURE_COLUMNS:
+        st.error(f"""Feature mismatch! 
+        Expected order: {model_features}
+        Current order: {FEATURE_COLUMNS}
+        Please ensure features are in the exact same order as during training.""")
         return
     
     model_type = "XGBoost" if XGBOOST_AVAILABLE and hasattr(model, 'get_booster') else "Random Forest"
@@ -282,21 +347,23 @@ def main():
     
     st.markdown('<h3 class="sub-header">📋 Patient Information Input</h3>', unsafe_allow_html=True)
     
-    # Add refresh button to generate random values
+    # Add refresh button to select random patient
     col_refresh, col_info = st.columns([1, 3])
     with col_refresh:
-        if st.button("🎲 Generate Random Patient", type="secondary", help="Generate random realistic medical values"):
+        if st.button("🎲 Select Random Patient", type="secondary", help="Select a random real patient from our dataset"):
             st.session_state.refresh_values = True
     
     with col_info:
-        st.info("💡 Use the refresh button to generate random patient data for testing, or input values manually.")
+        st.info("💡 Click the button to select a random real patient from our balanced dataset (50% sepsis, 50% non-sepsis cases).")
     
     # Generate random data if refresh button was pressed
     if st.session_state.get('refresh_values', False):
         random_data = generate_random_patient_data()
-        st.session_state.update(random_data)
+        if random_data is not None:
+            st.session_state.update(random_data)
+            actual_label = SAMPLE_PATIENTS[SAMPLE_PATIENTS[FEATURE_COLUMNS].eq(random_data).all(axis=1)]['SepsisLabel'].iloc[0]
+            st.success(f"🎲 Random patient selected! (Actual diagnosis: {'Sepsis' if actual_label == 1 else 'No Sepsis'})")
         st.session_state.refresh_values = False
-        st.success("🎲 Random patient data generated! Values updated across all tabs.")
         st.rerun()
     
     input_data = {}
@@ -317,23 +384,32 @@ def main():
                     session_key = f"input_{feature}"
                     
                     if feature == 'Gender':
-                        default_gender = st.session_state.get(feature, 0)
+                        default_gender = int(st.session_state.get(feature, 0))  # Ensure integer
                         value = st.selectbox(
                             f"{feature}", 
                             options=[0, 1], 
-                            index=int(default_gender),
+                            index=default_gender if default_gender in [0, 1] else 0,
                             format_func=lambda x: "Female" if x == 0 else "Male",
                             help="0=Female, 1=Male",
                             key=session_key
                         )
-                    elif feature in ['Unit1', 'Unit2']:
-                        default_unit = st.session_state.get(feature, 0)
+                    elif feature == 'Hour':
+                        default_hour = int(st.session_state.get(feature, 0))  # Ensure integer
                         value = st.selectbox(
                             f"{feature}", 
-                            options=[0, 1], 
-                            index=int(default_unit),
-                            format_func=lambda x: "No" if x == 0 else "Yes",
-                            help=f"Is patient in {feature}?",
+                            options=list(range(24)), 
+                            index=default_hour if 0 <= default_hour < 24 else 0,
+                            help="Hour of the day (0-23)",
+                            key=session_key
+                        )
+                    elif feature == 'ICULOS':
+                        default_iculos = int(st.session_state.get(feature, 0))  # Ensure integer
+                        value = st.number_input(
+                            f"{feature}", 
+                            min_value=0,
+                            max_value=1000,
+                            value=default_iculos if 0 <= default_iculos <= 1000 else 0,
+                            help="ICU Length of Stay (days)",
                             key=session_key
                         )
                     else:
@@ -348,14 +424,14 @@ def main():
                             help_text = f"Enter the measured value (Range: {min_val:.1f}-{max_val:.1f})"
                             default_val = min_val
                         
-                        # Use random value if available, otherwise use default
+                        # Use session state value if available, otherwise use default
                         current_val = st.session_state.get(feature, default_val)
                         
                         # Ensure current value is within constraints
                         current_val = np.clip(float(current_val), min_val, max_val)
                         
                         # Determine appropriate step size
-                        if feature in ['HR', 'Age', 'Resp', 'FiO2', 'SBP', 'MAP', 'DBP', 'WBC', 'Platelets', 'Alkalinephos', 'Fibrinogen']:
+                        if feature in ['HR', 'Age', 'Resp', 'FiO2', 'MAP', 'WBC', 'Platelets']:
                             step = 1.0  # Integer values
                         elif max_val > 1000:
                             step = 1.0  # Large ranges use integer steps
@@ -375,20 +451,67 @@ def main():
                     input_data[feature] = value
     
     if st.button("🔍 Get Doctor Opinions", type="primary", use_container_width=True):
-        X_input = pd.DataFrame([input_data], columns=FEATURE_COLUMNS)
+        # Create DataFrame with features in exact order
+        X_input = pd.DataFrame([input_data])[FEATURE_COLUMNS]
         X_input = X_input.fillna(0)
         
-        prediction = model.predict(X_input)[0]
-        probability = model.predict_proba(X_input)[0]
+        # Scale the input data using the loaded scaler
+        X_input_scaled = scaler.transform(X_input)
         
-        tree_preds, tree_scores = get_individual_tree_predictions(model, X_input)
+        # Get tree predictions
+        tree_preds, tree_scores = get_individual_tree_predictions(model, X_input_scaled)
+        
+        # Calculate mean probability across trees
+        mean_scores = np.mean(tree_scores)
+        
+        # Create probability array [no_sepsis_prob, sepsis_prob]
+        probability = np.array([1 - mean_scores, mean_scores])
+        
+        # Make prediction based on thresholds
+        if mean_scores >= CONFIG['THRESHOLD_SEPSIS']:
+            prediction = 1
+        elif mean_scores <= CONFIG['THRESHOLD_NO_SEPSIS']:
+            prediction = 0
+        else:
+            prediction = 1 if mean_scores >= 0.5 else 0
         
         st.markdown("---")
         st.markdown('<h3 class="sub-header">🏛️ AI Advisory Board Decision</h3>', unsafe_allow_html=True)
         
-        # Correctly interpret probabilities: probability[1] is probability of class 1 (Sepsis)
-        sepsis_prob = probability[1]  # This is the probability of Sepsis (class 1)
-        no_sepsis_prob = probability[0]  # This is the probability of No Sepsis (class 0)
+        # Display prediction with probabilities
+        sepsis_prob = probability[1]
+        no_sepsis_prob = probability[0]
+        
+        # Add distribution plots before the decision
+        fig_dist = go.Figure()
+        
+        # Plot 1: Overall prediction distribution
+        fig_dist.add_trace(go.Histogram(
+            x=tree_scores,
+            name='Tree Predictions',
+            nbinsx=50,
+            marker_color='blue',
+            opacity=0.7
+        ))
+        
+        # Add threshold lines
+        fig_dist.add_vline(x=CONFIG['THRESHOLD_SEPSIS'], 
+                          line_dash="dash", line_color="red",
+                          annotation_text="Sepsis Threshold")
+        fig_dist.add_vline(x=CONFIG['THRESHOLD_NO_SEPSIS'], 
+                          line_dash="dash", line_color="green",
+                          annotation_text="No Sepsis Threshold")
+        
+        fig_dist.update_layout(
+            title="Distribution of Tree Predictions",
+            xaxis_title="Prediction Score",
+            yaxis_title="Count",
+            showlegend=True,
+            width=800,
+            height=300
+        )
+        
+        st.plotly_chart(fig_dist)
         
         if sepsis_prob >= CONFIG['THRESHOLD_SEPSIS']:
             st.error(f"🚨 **SEPSIS RISK DETECTED** (Confidence: {sepsis_prob:.1%})")
@@ -397,8 +520,9 @@ def main():
         else:
             st.warning(f"⚠️ **UNCERTAIN PREDICTION** (Sepsis: {sepsis_prob:.1%}, No Sepsis: {no_sepsis_prob:.1%})")
         
+        # Create and show parliament visualization
         fig, sepsis_votes, no_sepsis_votes, uncertain_votes = create_advisory_board_visualization(
-            tree_preds, tree_scores
+            tree_preds, tree_scores, model.n_estimators
         )
         
         st.plotly_chart(fig, use_container_width=True)
