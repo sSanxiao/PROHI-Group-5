@@ -15,7 +15,7 @@ warnings.filterwarnings('ignore')
 CONFIG = {
     'THRESHOLD_SEPSIS': 0.55,      # Above this = Sepsis
     'THRESHOLD_NO_SEPSIS': 0.45,   # Below this = No Sepsis  
-    'MODEL_PATH': 'models/xgboost.pkl',
+    'MODEL_PATH': 'models/random_forest.pkl',  # Updated to use random forest model
     'LOGO_PATH': './assets/project-logo.jpg',
     'CONSENSUS_STRONG': 80,
     'CONSENSUS_MODERATE': 60,
@@ -34,11 +34,13 @@ def load_sample_patients():
         
         # Drop specified columns (matching tree_voting_model.py)
         columns_drop = {
-            'Unnamed: 0', 'SBP', 'DBP', 'EtCO2', 'BaseExcess', 'HCO3',
-            'pH', 'PaCO2', 'Alkalinephos', 'Calcium', 'Magnesium',
-            'Phosphate', 'Potassium', 'PTT', 'Fibrinogen', 'Unit1', 'Unit2'
+            'Unnamed: 0', 'Unit1', 'Unit2'
         }
         df = df.drop(columns=[col for col in columns_drop if col in df.columns])
+        
+        # Verify available features
+        available_features = [col for col in df.columns if col not in ['Patient_ID', 'SepsisLabel']]
+        print("\nAvailable features:", available_features)
         
         # Separate sepsis and non-sepsis cases
         sepsis_cases = df[df['SepsisLabel'] == 1]
@@ -67,39 +69,40 @@ COLUMNS_DROP = {
     'Phosphate', 'Potassium', 'PTT', 'Fibrinogen', 'Unit1', 'Unit2'
 }
 
-# Update FEATURE_COLUMNS to match exactly what the model expects, in the same order
+# Keep ALL features in exact training order
 FEATURE_COLUMNS = [
-    'Hour', 'HR', 'O2Sat', 'Temp', 'MAP', 'Resp', 'FiO2', 'SaO2', 'AST', 'BUN',
-    'Chloride', 'Creatinine', 'Bilirubin_direct', 'Glucose', 'Lactate',
-    'Bilirubin_total', 'TroponinI', 'Hct', 'Hgb', 'WBC', 'Platelets',
-    'Age', 'Gender', 'HospAdmTime', 'ICULOS'
+    'Hour', 'HR', 'O2Sat', 'Temp', 'SBP', 'MAP', 'DBP', 'Resp', 'EtCO2',
+    'BaseExcess', 'HCO3', 'FiO2', 'pH', 'PaCO2', 'SaO2', 'AST', 'BUN',
+    'Alkalinephos', 'Calcium', 'Chloride', 'Creatinine', 'Bilirubin_direct',
+    'Glucose', 'Lactate', 'Magnesium', 'Phosphate', 'Potassium',
+    'Bilirubin_total', 'TroponinI', 'Hct', 'Hgb', 'PTT', 'WBC',
+    'Fibrinogen', 'Platelets', 'Age', 'Gender', 'HospAdmTime', 'ICULOS'
 ]
 
-# Update FEATURE_CATEGORIES to maintain the same order
+# Keep all features in categories for UI organization
 FEATURE_CATEGORIES = {
-    "Time Features": ['Hour', 'ICULOS'],
-    "Vital Signs": ['HR', 'O2Sat', 'Temp', 'MAP', 'Resp'],
-    "Blood Gas": ['FiO2', 'SaO2'],
-    "Organ Function": ['AST', 'BUN', 'Creatinine'],
-    "Metabolic": ['Chloride', 'Glucose', 'Lactate'],
-    "Hematology": ['Bilirubin_direct', 'Bilirubin_total', 'TroponinI', 'Hct', 'Hgb', 'WBC', 'Platelets'],
-    "Demographics": ['Age', 'Gender', 'HospAdmTime']
+    "Time Features": ['Hour', 'HospAdmTime', 'ICULOS'],
+    "Vital Signs": ['HR', 'O2Sat', 'Temp', 'SBP', 'MAP', 'DBP', 'Resp', 'EtCO2'],
+    "Blood Gas": ['BaseExcess', 'HCO3', 'FiO2', 'pH', 'PaCO2', 'SaO2'],
+    "Organ Function": ['AST', 'BUN', 'Alkalinephos', 'Creatinine'],
+    "Metabolic": ['Calcium', 'Chloride', 'Glucose', 'Lactate', 'Magnesium', 'Phosphate', 'Potassium'],
+    "Hematology": ['Bilirubin_direct', 'Bilirubin_total', 'TroponinI', 'Hct', 'Hgb', 'PTT', 'WBC', 'Fibrinogen', 'Platelets'],
+    "Demographics": ['Age', 'Gender']
 }
 
-# Update NORMAL_RANGES to include new features
+# Keep all normal ranges
 NORMAL_RANGES = {
-    'HR': (60, 100), 'O2Sat': (95, 100), 'Temp': (36.1, 37.2),
-    'MAP': (70, 100), 'Resp': (12, 20),
-    'FiO2': (21, 100), 'SaO2': (95, 100),
-    'AST': (10, 40), 'BUN': (7, 20),
-    'Glucose': (70, 140), 'Lactate': (0.5, 2.2),
-    'Bilirubin_direct': (0, 0.3),
-    'Bilirubin_total': (0.2, 1.2), 'TroponinI': (0, 0.04),
-    'Hct': (38, 52), 'Hgb': (12, 18), 'WBC': (4.0, 11.0),
-    'Platelets': (150, 450),
-    'Age': (18, 100), 'HospAdmTime': (0, 168),
-    'Chloride': (96, 106), 'Creatinine': (0.6, 1.3),
-    'Hour': (0, 24), 'ICULOS': (0, 1000)  # Added ranges for time features
+    'HR': (60, 100), 'O2Sat': (95, 100), 'Temp': (36.1, 37.2), 'SBP': (90, 140),
+    'MAP': (70, 100), 'DBP': (60, 90), 'Resp': (12, 20), 'EtCO2': (35, 45),
+    'BaseExcess': (-2, 2), 'HCO3': (22, 26), 'FiO2': (21, 100), 'pH': (7.35, 7.45),
+    'PaCO2': (35, 45), 'SaO2': (95, 100), 'AST': (10, 40), 'BUN': (7, 20),
+    'Alkalinephos': (44, 147), 'Calcium': (8.5, 10.5), 'Chloride': (96, 106),
+    'Creatinine': (0.6, 1.3), 'Bilirubin_direct': (0, 0.3), 'Glucose': (70, 140),
+    'Lactate': (0.5, 2.2), 'Magnesium': (1.7, 2.2), 'Phosphate': (2.5, 4.5),
+    'Potassium': (3.5, 5.0), 'Bilirubin_total': (0.2, 1.2), 'TroponinI': (0, 0.04),
+    'Hct': (38, 52), 'Hgb': (12, 18), 'PTT': (25, 35), 'WBC': (4.0, 11.0),
+    'Fibrinogen': (200, 400), 'Platelets': (150, 450), 'Age': (18, 100),
+    'Hour': (0, 23), 'HospAdmTime': (0, 240), 'ICULOS': (0, 240)
 }
 
 st.set_page_config(
@@ -180,123 +183,214 @@ def generate_random_patient_data():
     # Select a random patient
     random_patient = SAMPLE_PATIENTS.sample(n=1).iloc[0]
     
-    # Convert to dictionary with only the features we need
+    # Convert to dictionary with ALL features in exact order
     patient_data = {}
     for feature in FEATURE_COLUMNS:
-        patient_data[feature] = random_patient[feature]
+        if feature in random_patient.index:
+            patient_data[feature] = random_patient[feature]
+        else:
+            # Use default value for missing features
+            if feature == 'Gender':
+                patient_data[feature] = 0  # Default to Female
+            elif feature == 'Hour':
+                patient_data[feature] = 0  # Default to start of day
+            elif feature in NORMAL_RANGES:
+                min_val, max_val = NORMAL_RANGES[feature]
+                patient_data[feature] = (min_val + max_val) / 2  # Use middle of normal range
+            else:
+                patient_data[feature] = 0  # Default to 0 for unknown features
     
     return patient_data
 
 def get_individual_tree_predictions(model, X):
-    """Get predictions from each tree, matching tree_voting_model.py logic exactly"""
-    if XGBOOST_AVAILABLE and hasattr(model, 'get_booster'):  # XGBoost model
-        dmatrix = xgb.DMatrix(X)
-        
-        # Get predictions exactly like tree_voting_model.py
-        trees_pred = model.get_booster().predict(
-            dmatrix,
-            pred_contribs=True,
-            approx_contribs=False
-        )
-        
-        # Convert scores to probabilities with temperature scaling
-        temperature = 0.1  # Same as tree_voting_model.py
-        raw_scores = trees_pred[:, :-1]  # Exclude bias term
-        scaled_scores = raw_scores / temperature
-        tree_scores = 1 / (1 + np.exp(-scaled_scores))
-        
-        # Clip values between 0 and 1
-        tree_scores = np.clip(tree_scores, 0, 1)
-        
-        # Flatten to get one score per tree
-        tree_scores = tree_scores.flatten()
-        tree_predictions = (tree_scores >= 0.5).astype(int)
-        
-        print(f"Tree predictions shape: {tree_scores.shape}")
-        print(f"Sample predictions from trees: {tree_scores[:5]}")
-        
-    else:  # Random Forest or other models
-        tree_predictions = []
-        tree_scores = []
-        for tree in model.estimators_:
-            pred = tree.predict(X)[0]
-            prob = tree.predict_proba(X)[0]
-            tree_predictions.append(int(pred))
-            tree_scores.append(prob)  # [prob_class0, prob_class1]
-        tree_predictions = np.array(tree_predictions)
-        tree_scores = np.array(tree_scores)
+    """Get predictions from each tree in the random forest"""
+    tree_predictions = []
+    tree_scores = []
     
-    return tree_predictions, tree_scores
+    # Get predictions from each tree in the forest
+    for tree in model.estimators_:
+        pred = tree.predict(X)[0]
+        prob = tree.predict_proba(X)[0]
+        tree_predictions.append(int(pred))
+        tree_scores.append(prob[1])  # Probability of class 1 (Sepsis)
+    
+    return np.array(tree_predictions), np.array(tree_scores)
 
-def create_advisory_board_visualization(tree_predictions, tree_scores, n_estimators):
+def create_advisory_board_visualization(tree_predictions, tree_scores):
     """Create visualization of tree predictions"""
-    print(f"Visualization - Number of predictions: {len(tree_predictions)}")  # Debug print
-    print(f"Visualization - Number of scores: {len(tree_scores)}")  # Debug print
-    
-    n_trees = n_estimators  # Use passed number of trees
     threshold_sepsis = CONFIG['THRESHOLD_SEPSIS']
     threshold_no_sepsis = CONFIG['THRESHOLD_NO_SEPSIS']
     
-    decisions = []
-    colors = []
+    # Separate predictions into three groups
+    sepsis_indices = []
+    no_sepsis_indices = []
+    uncertain_indices = []
     
-    # For XGBoost: tree_scores are probabilities
     for i, score in enumerate(tree_scores):
-        if hasattr(score, '__len__') and len(score) > 1:  # Random Forest probability array
-            sepsis_prob = score[1]  # Probability of class 1 (Sepsis)
-        else:  # XGBoost probability
-            sepsis_prob = float(score)
-        
-        if sepsis_prob >= threshold_sepsis:
-            decisions.append("Sepsis")
-            colors.append("#f44336")  # Red
-        elif sepsis_prob <= threshold_no_sepsis:
-            decisions.append("No Sepsis") 
-            colors.append("#4caf50")  # Green
+        if score >= threshold_sepsis:
+            sepsis_indices.append(i)
+        elif score <= threshold_no_sepsis:
+            no_sepsis_indices.append(i)
         else:
-            decisions.append("Uncertain")
-            colors.append("#ff9800")  # Orange
+            uncertain_indices.append(i)
     
-    sepsis_count = decisions.count("Sepsis")
-    no_sepsis_count = decisions.count("No Sepsis")
-    uncertain_count = decisions.count("Uncertain")
-    
-    # Create semicircle arrangement for all trees
-    angles = np.linspace(0, np.pi, n_trees)
-    x = np.cos(angles)
-    y = np.sin(angles)
+    sepsis_count = len(sepsis_indices)
+    no_sepsis_count = len(no_sepsis_indices)
+    uncertain_count = len(uncertain_indices)
     
     fig = go.Figure()
     
-    fig.add_trace(go.Scatter(
-        x=x, y=y,
-        mode='markers',
-        marker=dict(
-            size=12,  # Slightly smaller size to fit all trees
-            color=colors,
-            line=dict(width=1, color='white'),
-            symbol='circle'
-        ),
-        text=[f"AI Advisor {i+1}<br>Decision: {dec}<br>Sepsis Prob: {score:.3f}" 
-              for i, (dec, score) in enumerate(zip(decisions, tree_scores))],
-        hovertemplate='%{text}<extra></extra>',
-        showlegend=False
-    ))
+    # Calculate positions for each group
+    def create_column_positions(indices, col_x, spacing=2.0):
+        if not indices:
+            return [], []
+        n = len(indices)
+        x = []
+        y = []
+        for i in range(n):
+            x.append(col_x + (i % 5) * 2.0)  # 5 doctors per row
+            y.append(-(i // 5) * spacing)  # New row every 5 doctors
+        return x, y
+    
+    # Create positions for each group with extreme spacing
+    x_no_sepsis, y_no_sepsis = create_column_positions(no_sepsis_indices, col_x=0)
+    x_uncertain, y_uncertain = create_column_positions(uncertain_indices, col_x=20)
+    x_sepsis, y_sepsis = create_column_positions(sepsis_indices, col_x=40)
+    
+    # Add background circles for no sepsis predictions
+    if no_sepsis_indices:
+        # Add background circles
+        fig.add_trace(go.Scatter(
+            x=x_no_sepsis,
+            y=y_no_sepsis,
+            mode='markers',
+            marker=dict(
+                size=45,
+                color='rgba(76, 175, 80, 0.2)',  # Light green background
+                line=dict(color='#4caf50', width=2)  # Green border
+            ),
+            hoverinfo='skip',
+            showlegend=False
+        ))
+        # Add doctor emojis
+        fig.add_trace(go.Scatter(
+            x=x_no_sepsis,
+            y=y_no_sepsis,
+            mode='text',
+            text=["👨‍⚕️"] * len(no_sepsis_indices),
+            textposition="middle center",
+            textfont=dict(size=30),
+            hovertext=[f"Doctor {i+1}<br>Prediction: No Sepsis<br>Confidence: {tree_scores[i]:.3f}" 
+                      for i in no_sepsis_indices],
+            hoverinfo='text',
+            showlegend=False
+        ))
+    
+    # Add background circles for uncertain predictions
+    if uncertain_indices:
+        # Add background circles
+        fig.add_trace(go.Scatter(
+            x=x_uncertain,
+            y=y_uncertain,
+            mode='markers',
+            marker=dict(
+                size=45,
+                color='rgba(255, 152, 0, 0.2)',  # Light orange background
+                line=dict(color='#ff9800', width=2)  # Orange border
+            ),
+            hoverinfo='skip',
+            showlegend=False
+        ))
+        # Add doctor emojis
+        fig.add_trace(go.Scatter(
+            x=x_uncertain,
+            y=y_uncertain,
+            mode='text',
+            text=["👨‍⚕️"] * len(uncertain_indices),
+            textposition="middle center",
+            textfont=dict(size=30),
+            hovertext=[f"Doctor {i+1}<br>Prediction: Uncertain<br>Confidence: {tree_scores[i]:.3f}" 
+                      for i in uncertain_indices],
+            hoverinfo='text',
+            showlegend=False
+        ))
+    
+    # Add background circles for sepsis predictions
+    if sepsis_indices:
+        # Add background circles
+        fig.add_trace(go.Scatter(
+            x=x_sepsis,
+            y=y_sepsis,
+            mode='markers',
+            marker=dict(
+                size=45,
+                color='rgba(244, 67, 54, 0.2)',  # Light red background
+                line=dict(color='#f44336', width=2)  # Red border
+            ),
+            hoverinfo='skip',
+            showlegend=False
+        ))
+        # Add doctor emojis
+        fig.add_trace(go.Scatter(
+            x=x_sepsis,
+            y=y_sepsis,
+            mode='text',
+            text=["👨‍⚕️"] * len(sepsis_indices),
+            textposition="middle center",
+            textfont=dict(size=30),
+            hovertext=[f"Doctor {i+1}<br>Prediction: Sepsis<br>Confidence: {tree_scores[i]:.3f}" 
+                      for i in sepsis_indices],
+            hoverinfo='text',
+            showlegend=False
+        ))
+    
+    # Add column labels with much more space from doctors
+    fig.add_annotation(x=4, y=2.0,
+                      text="No Sepsis Prediction", 
+                      showarrow=False,
+                      font=dict(size=16, color="#4caf50"),
+                      align="center")
+    fig.add_annotation(x=24, y=2.0,
+                      text="Uncertain", 
+                      showarrow=False,
+                      font=dict(size=16, color="#ff9800"),
+                      align="center")
+    fig.add_annotation(x=44, y=2.0,
+                      text="Sepsis Prediction", 
+                      showarrow=False,
+                      font=dict(size=16, color="#f44336"),
+                      align="center")
+    
+    # Calculate maximum number of rows needed
+    max_rows = max(
+        (len(sepsis_indices) + 4) // 5,  # 5 doctors per row
+        (len(no_sepsis_indices) + 4) // 5,
+        (len(uncertain_indices) + 4) // 5
+    )
     
     fig.update_layout(
         title=dict(
-            text=f"AI Advisory Board ({n_trees} Trees)<br>" +
-                 f"<span style='color:#f44336'>Sepsis: {sepsis_count}</span> | " +
-                 f"<span style='color:#4caf50'>No Sepsis: {no_sepsis_count}</span> | " +
-                 f"<span style='color:#ff9800'>Uncertain: {uncertain_count}</span>",
+            text=f"Random Forest Advisory Board",
             x=0.5,
             font=dict(size=16)
         ),
-        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        xaxis=dict(
+            showgrid=False,
+            zeroline=False,
+            showticklabels=False,
+            range=[-2, 50]  # Much wider range for extreme spacing
+        ),
+        yaxis=dict(
+            showgrid=False,
+            zeroline=False,
+            showticklabels=False,
+            range=[-(max_rows * 2.0), 3.0],  # Much more vertical space
+            scaleanchor='x',
+            scaleratio=1
+        ),
         plot_bgcolor='white',
-        width=800,
-        height=400,
+        width=2000,  # Even wider
+        height=900,
         margin=dict(l=50, r=50, t=100, b=50)
     )
     
@@ -304,14 +398,14 @@ def create_advisory_board_visualization(tree_predictions, tree_scores, n_estimat
 
 def main():
     st.markdown('<h1 class="main-header">🩺 PROHI Sepsis Prediction Dashboard</h1>', unsafe_allow_html=True)
-    st.markdown('<h2 class="sub-header">AI Advisory Board - XGBoost Ensemble for Sepsis Detection</h2>', unsafe_allow_html=True)
+    st.markdown('<h2 class="sub-header">Random Forest Advisory Board - 100 Trees for Sepsis Detection</h2>', unsafe_allow_html=True)
     
     st.sidebar.image(CONFIG['LOGO_PATH'], width=200)
     st.sidebar.markdown("## About")
     st.sidebar.info("""
-    This dashboard uses an XGBoost model where each tree acts as an "AI advisor" 
+    This dashboard uses a Random Forest model where each tree acts as an independent "advisor" 
     contributing to sepsis diagnosis. The advisory board visualization shows how 
-    individual trees vote and their continuous scores combine for the final prediction.
+    individual trees vote and their confidence scores combine for the final prediction.
     """)
     
     # Load sample patients at startup
@@ -346,27 +440,49 @@ def main():
         Please ensure features are in the exact same order as during training.""")
         return
     
-    model_type = "XGBoost" if XGBOOST_AVAILABLE and hasattr(model, 'get_booster') else "Random Forest"
-    st.success(f"✅ {model_type} model loaded successfully! ({model.n_estimators} trees ready to advise)")
+    st.success(f"✅ Random Forest model loaded successfully! (100 trees ready to advise)")
     
     st.markdown('<h3 class="sub-header">📋 Patient Information Input</h3>', unsafe_allow_html=True)
     
-    # Add refresh button to select random patient
-    col_refresh, col_info = st.columns([1, 3])
+    # Add refresh and reset buttons
+    col_refresh, col_info, col_reset = st.columns([1, 2, 1])
+    
     with col_refresh:
-        if st.button("🎲 Select Random Patient", type="secondary", help="Select a random real patient from our dataset"):
+        if st.button("🎲 Select Random Patient", type="secondary", 
+                    help="Select a random real patient from our dataset",
+                    disabled=st.session_state.get('inputs_locked', False)):
             st.session_state.refresh_values = True
+            st.session_state.inputs_locked = True
     
     with col_info:
-        st.info("💡 Click the button to select a random real patient from our balanced dataset (50% sepsis, 50% non-sepsis cases).")
+        if 'refresh_values' in st.session_state and hasattr(SAMPLE_PATIENTS, 'iloc'):
+            # Get actual label for the current patient
+            current_data = {feature: st.session_state.get(feature, 0) for feature in FEATURE_COLUMNS}
+            matching_patients = SAMPLE_PATIENTS[SAMPLE_PATIENTS[FEATURE_COLUMNS].eq(current_data).all(axis=1)]
+            if not matching_patients.empty:
+                actual_label = matching_patients['SepsisLabel'].iloc[0]
+                if actual_label == 1:
+                    st.warning("🏥 Patient has SEPSIS")
+                else:
+                    st.info("🏥 Patient does NOT have sepsis")
+    
+    with col_reset:
+        if st.button("🔄 Reset", type="secondary",
+                    help="Reset fields and enable editing",
+                    disabled=not st.session_state.get('inputs_locked', False)):
+            st.session_state.inputs_locked = False
+            st.session_state.refresh_values = False
+            # Clear all feature values
+            for feature in FEATURE_COLUMNS:
+                if feature in st.session_state:
+                    del st.session_state[feature]
+            st.rerun()
     
     # Generate random data if refresh button was pressed
     if st.session_state.get('refresh_values', False):
         random_data = generate_random_patient_data()
         if random_data is not None:
             st.session_state.update(random_data)
-            actual_label = SAMPLE_PATIENTS[SAMPLE_PATIENTS[FEATURE_COLUMNS].eq(random_data).all(axis=1)]['SepsisLabel'].iloc[0]
-            st.success(f"🎲 Random patient selected! (Actual diagnosis: {'Sepsis' if actual_label == 1 else 'No Sepsis'})")
         st.session_state.refresh_values = False
         st.rerun()
     
@@ -395,7 +511,8 @@ def main():
                             index=default_gender if default_gender in [0, 1] else 0,
                             format_func=lambda x: "Female" if x == 0 else "Male",
                             help="0=Female, 1=Male",
-                            key=session_key
+                            key=session_key,
+                            disabled=st.session_state.get('inputs_locked', False)
                         )
                     elif feature == 'Hour':
                         default_hour = int(st.session_state.get(feature, 0))  # Ensure integer
@@ -404,7 +521,8 @@ def main():
                             options=list(range(24)), 
                             index=default_hour if 0 <= default_hour < 24 else 0,
                             help="Hour of the day (0-23)",
-                            key=session_key
+                            key=session_key,
+                            disabled=st.session_state.get('inputs_locked', False)
                         )
                     elif feature == 'ICULOS':
                         default_iculos = int(st.session_state.get(feature, 0))  # Ensure integer
@@ -414,7 +532,8 @@ def main():
                             max_value=1000,
                             value=default_iculos if 0 <= default_iculos <= 1000 else 0,
                             help="ICU Length of Stay (days)",
-                            key=session_key
+                            key=session_key,
+                            disabled=st.session_state.get('inputs_locked', False)
                         )
                     else:
                         # Get appropriate constraints for this feature
@@ -449,7 +568,8 @@ def main():
                             value=float(current_val),
                             step=step,
                             help=help_text,
-                            key=session_key
+                            key=session_key,
+                            disabled=st.session_state.get('inputs_locked', False)
                         )
                     
                     input_data[feature] = value
@@ -457,88 +577,113 @@ def main():
     if st.button("🔍 Get Doctor Opinions", type="primary", use_container_width=True):
         # Create DataFrame with features in exact order
         X_input = pd.DataFrame([input_data])[FEATURE_COLUMNS]
-        X_input = X_input.fillna(0)
+        X_input = X_input.fillna(0)  # Fill any missing values with 0
         
         # Scale the input data using the loaded scaler
         X_input_scaled = scaler.transform(X_input)
         
-        # Get tree predictions
+        # Get predictions from all trees
         tree_preds, tree_scores = get_individual_tree_predictions(model, X_input_scaled)
         
-        # Calculate mean probability across trees
-        mean_scores = np.mean(tree_scores)
-        
-        # Create probability array [no_sepsis_prob, sepsis_prob]
-        probability = np.array([1 - mean_scores, mean_scores])
-        
-        # Make prediction based on thresholds
-        if mean_scores >= CONFIG['THRESHOLD_SEPSIS']:
-            prediction = 1
-        elif mean_scores <= CONFIG['THRESHOLD_NO_SEPSIS']:
-            prediction = 0
-        else:
-            prediction = 1 if mean_scores >= 0.5 else 0
+        # Calculate mean probability
+        mean_prob = np.mean(tree_scores)
         
         st.markdown("---")
-        st.markdown('<h3 class="sub-header">🏛️ AI Advisory Board Decision</h3>', unsafe_allow_html=True)
+        st.markdown('<h3 class="sub-header">🏛️ Random Forest Advisory Board Decision</h3>', unsafe_allow_html=True)
         
-        # Display prediction with probabilities
-        sepsis_prob = probability[1]
-        no_sepsis_prob = probability[0]
-        
-        # Add distribution plots before the decision
+        # Add distribution plot of tree predictions
         fig_dist = go.Figure()
         
-        # Plot 1: Overall prediction distribution
-        fig_dist.add_trace(go.Histogram(
+        # Create scatter plot of tree predictions
+        fig_dist.add_trace(go.Scatter(
             x=tree_scores,
-            name='Tree Predictions',
-            nbinsx=50,
-            marker_color='blue',
-            opacity=0.7
+            y=np.zeros_like(tree_scores),  # All points on same y-level
+            mode='markers',
+            marker=dict(
+                size=15,
+                color=['#f44336' if s >= CONFIG['THRESHOLD_SEPSIS'] else  # Red for sepsis
+                       '#4caf50' if s <= CONFIG['THRESHOLD_NO_SEPSIS'] else  # Green for no sepsis
+                       '#ff9800' for s in tree_scores],  # Orange for uncertain
+                line=dict(width=1, color='white')
+            ),
+            text=[f"Tree {i+1}<br>Score: {score:.3f}" for i, score in enumerate(tree_scores)],
+            hovertemplate='%{text}<extra></extra>',
+            name='Tree Predictions'
         ))
         
         # Add threshold lines
         fig_dist.add_vline(x=CONFIG['THRESHOLD_SEPSIS'], 
                           line_dash="dash", line_color="red",
-                          annotation_text="Sepsis Threshold")
+                          annotation=dict(
+                              text="Sepsis Threshold",
+                              font=dict(color="red")
+                          ))
         fig_dist.add_vline(x=CONFIG['THRESHOLD_NO_SEPSIS'], 
                           line_dash="dash", line_color="green",
-                          annotation_text="No Sepsis Threshold")
+                          annotation=dict(
+                              text="No Sepsis Threshold",
+                              font=dict(color="green")
+                          ))
         
+        # Update layout
         fig_dist.update_layout(
-            title="Distribution of Tree Predictions",
-            xaxis_title="Prediction Score",
-            yaxis_title="Count",
-            showlegend=True,
+            xaxis=dict(
+                title="Prediction Score",
+                range=[0, 1],  # Fix range from 0 to 1
+                tickformat='.1f',  # Show as decimal
+                gridcolor='lightgray',
+                showgrid=True
+            ),
+            yaxis=dict(
+                showticklabels=False,
+                showgrid=False,
+                zeroline=False
+            ),
+            showlegend=False,
+            plot_bgcolor='white',
             width=800,
-            height=300
+            height=200,
+            margin=dict(l=50, r=50, t=20, b=50)  # Reduced top margin since no title
         )
         
-        st.plotly_chart(fig_dist)
+        st.plotly_chart(fig_dist, use_container_width=True)
         
-        if sepsis_prob >= CONFIG['THRESHOLD_SEPSIS']:
-            st.error(f"🚨 **SEPSIS RISK DETECTED** (Confidence: {sepsis_prob:.1%})")
-        elif sepsis_prob <= CONFIG['THRESHOLD_NO_SEPSIS']:
-            st.success(f"✅ **LOW SEPSIS RISK** (Confidence: {no_sepsis_prob:.1%})")
+        # Show summary statistics in Streamlit
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Mean Score", f"{np.mean(tree_scores):.3f}")
+        with col2:
+            st.metric("Trees for Sepsis", f"{sum(s >= CONFIG['THRESHOLD_SEPSIS'] for s in tree_scores)}")
+        with col3:
+            st.metric("Trees for No Sepsis", f"{sum(s <= CONFIG['THRESHOLD_NO_SEPSIS'] for s in tree_scores)}")
+        with col4:
+            st.metric("Uncertain Trees", f"{sum(CONFIG['THRESHOLD_NO_SEPSIS'] < s < CONFIG['THRESHOLD_SEPSIS'] for s in tree_scores)}")
+        
+        # Show decision based on mean probability
+        if mean_prob >= CONFIG['THRESHOLD_SEPSIS']:
+            st.error(f"🚨 **SEPSIS RISK DETECTED** (Mean Confidence: {mean_prob:.1%})")
+        elif mean_prob <= CONFIG['THRESHOLD_NO_SEPSIS']:
+            st.success(f"✅ **LOW SEPSIS RISK** (Mean Confidence: {1-mean_prob:.1%})")
         else:
-            st.warning(f"⚠️ **UNCERTAIN PREDICTION** (Sepsis: {sepsis_prob:.1%}, No Sepsis: {no_sepsis_prob:.1%})")
+            st.warning(f"⚠️ **UNCERTAIN PREDICTION** (Sepsis: {mean_prob:.1%}, No Sepsis: {1-mean_prob:.1%})")
         
         # Create and show parliament visualization
         fig, sepsis_votes, no_sepsis_votes, uncertain_votes = create_advisory_board_visualization(
-            tree_preds, tree_scores, model.n_estimators
+            tree_preds, tree_scores
         )
         
         st.plotly_chart(fig, use_container_width=True)
         
-        col1, col2, col3 = st.columns(3)
+        # Show tree agreement statistics
+        st.markdown("### 📊 Tree Agreement Analysis")
         
+        col1, col2, col3 = st.columns(3)
         with col1:
             st.markdown(f"""
             <div class="doctor-card sepsis-positive">
                 <h4>🔴 Sepsis</h4>
                 <h2>{sepsis_votes}</h2>
-                <p>advisors</p>
+                <p>trees</p>
             </div>
             """, unsafe_allow_html=True)
         
@@ -547,7 +692,7 @@ def main():
             <div class="doctor-card sepsis-negative">
                 <h4>🟢 No Sepsis</h4>
                 <h2>{no_sepsis_votes}</h2>
-                <p>advisors</p>
+                <p>trees</p>
             </div>
             """, unsafe_allow_html=True)
         
@@ -556,9 +701,19 @@ def main():
             <div class="doctor-card sepsis-unsure">
                 <h4>🟡 Uncertain</h4>
                 <h2>{uncertain_votes}</h2>
-                <p>advisors</p>
+                <p>trees</p>
             </div>
             """, unsafe_allow_html=True)
+        
+        # Show tree disagreement
+        disagreement = np.std(tree_scores)
+        st.markdown(f"""
+        ### 🎯 Tree Consensus Analysis
+        - Mean prediction: {mean_prob:.3f}
+        - Standard deviation: {disagreement:.3f}
+        - Strong predictions (>0.8 or <0.2): {((tree_scores > 0.8).sum() + (tree_scores < 0.2).sum())} trees
+        - Uncertain predictions (0.4-0.6): {((tree_scores >= 0.4) & (tree_scores <= 0.6)).sum()} trees
+        """)
         
         st.markdown("---")
         st.markdown('<h3 class="sub-header">📊 Detailed Analysis</h3>', unsafe_allow_html=True)
@@ -568,16 +723,11 @@ def main():
         decisions = []
         
         for score in tree_scores:
-            if hasattr(score, '__len__') and len(score) > 1:  # Random Forest
-                sepsis_prob = score[1]
-            else:  # XGBoost or single value
-                sepsis_prob = float(score)
+            prob_scores.append(score)
             
-            prob_scores.append(sepsis_prob)
-            
-            if sepsis_prob >= CONFIG['THRESHOLD_SEPSIS']:
+            if score >= CONFIG['THRESHOLD_SEPSIS']:
                 decisions.append("Sepsis")
-            elif sepsis_prob <= CONFIG['THRESHOLD_NO_SEPSIS']:
+            elif score <= CONFIG['THRESHOLD_NO_SEPSIS']:
                 decisions.append("No Sepsis")
             else:
                 decisions.append("Uncertain")
@@ -588,66 +738,7 @@ def main():
             'Decision': decisions
         })
         
-        fig_hist = px.histogram(
-            score_df, 
-            x='Sepsis_Probability', 
-            color='Decision',
-            nbins=20,
-            title="Distribution of Tree Predictions (Sepsis Probability)",
-            color_discrete_map={
-                'Sepsis': '#f44336',
-                'No Sepsis': '#4caf50',
-                'Uncertain': '#ff9800'
-            }
-        )
-        fig_hist.add_vline(x=CONFIG['THRESHOLD_SEPSIS'], line_dash="dash", line_color="red", 
-                          annotation_text=f"Sepsis Threshold ({CONFIG['THRESHOLD_SEPSIS']})")
-        fig_hist.add_vline(x=CONFIG['THRESHOLD_NO_SEPSIS'], line_dash="dash", line_color="green", 
-                          annotation_text=f"No Sepsis Threshold ({CONFIG['THRESHOLD_NO_SEPSIS']})")
-        
-        st.plotly_chart(fig_hist, use_container_width=True)
-        
-        # Prediction-specific feature importance using SHAP-like approach or input values
-        st.markdown("### 🎯 Key Features for This Prediction")
-        
-        # Create feature importance based on input values and their deviation from normal ranges
-        feature_importance_scores = []
-        for i, feature in enumerate(FEATURE_COLUMNS):
-            input_value = input_data[feature]
-            
-            # Calculate importance based on deviation from normal range
-            if feature in NORMAL_RANGES:
-                min_val, max_val = NORMAL_RANGES[feature]
-                normal_center = (min_val + max_val) / 2
-                deviation = abs(input_value - normal_center) / (max_val - min_val)
-                importance = min(deviation, 1.0)  # Cap at 1.0
-            else:
-                # For non-numeric features, use a simple scoring
-                importance = 0.5 if input_value != 0 else 0.1
-            
-            feature_importance_scores.append(importance)
-        
-        importance_df = pd.DataFrame({
-            'Feature': FEATURE_COLUMNS,
-            'Input_Value': [input_data[f] for f in FEATURE_COLUMNS],
-            'Deviation_Score': feature_importance_scores
-        }).sort_values('Deviation_Score', ascending=False).head(CONFIG['TOP_FEATURES_COUNT'])
-        
-        fig_importance = px.bar(
-            importance_df, 
-            x='Deviation_Score', 
-            y='Feature',
-            orientation='h',
-            title=f"Top {CONFIG['TOP_FEATURES_COUNT']} Most Influential Features for This Patient",
-            hover_data=['Input_Value']
-        )
-        fig_importance.update_layout(yaxis={'categoryorder': 'total ascending'})
-        
-        st.plotly_chart(fig_importance, use_container_width=True)
-        
-        st.markdown("---")
-        st.markdown('<h3 class="sub-header">🩺 Clinical Interpretation</h3>', unsafe_allow_html=True)
-        
+        # Calculate consensus percentage
         total_decisive = sepsis_votes + no_sepsis_votes
         consensus_pct = max(sepsis_votes, no_sepsis_votes) / len(tree_preds) * 100 if len(tree_preds) > 0 else 0
         
@@ -662,7 +753,7 @@ def main():
             consensus_color = "gray"
         
         # Calculate average probability
-        avg_sepsis_prob = np.mean([score[1] if hasattr(score, '__len__') and len(score) > 1 else score for score in tree_scores])
+        avg_sepsis_prob = np.mean(tree_scores)
         
         st.markdown(f"""
         **Consensus Analysis:**
@@ -671,23 +762,23 @@ def main():
         - Trees voting No Sepsis: **{no_sepsis_votes}**
         - Trees uncertain: **{uncertain_votes}**
         - Average sepsis probability: **{avg_sepsis_prob:.1%}**
-        - Final model prediction: **{sepsis_prob:.1%}** (Sepsis), **{no_sepsis_prob:.1%}** (No Sepsis)
+        - Final model prediction: **{mean_prob:.1%}** (Sepsis), **{1-mean_prob:.1%}** (No Sepsis)
         
         **Clinical Recommendation:**
         """, unsafe_allow_html=True)
         
-        if sepsis_prob >= CONFIG['THRESHOLD_SEPSIS']:
+        if mean_prob >= CONFIG['THRESHOLD_SEPSIS']:
             if consensus_pct >= 70:
                 st.error("🚨 **HIGH PRIORITY**: Strong consensus for sepsis risk. Immediate clinical evaluation and intervention recommended.")
             else:
                 st.warning("⚠️ **MODERATE PRIORITY**: Sepsis risk detected with some uncertainty. Close monitoring and clinical assessment advised.")
-        elif sepsis_prob <= CONFIG['THRESHOLD_NO_SEPSIS']:
+        elif mean_prob <= CONFIG['THRESHOLD_NO_SEPSIS']:
             if consensus_pct >= 70:
                 st.success("✅ **LOW PRIORITY**: Strong consensus for low sepsis risk. Continue routine monitoring per protocol.")
             else:
                 st.info("ℹ️ **ROUTINE MONITORING**: Low sepsis risk indicated but maintain standard care vigilance.")
         else:
-            st.warning(f"🤔 **UNCERTAIN PREDICTION**: Model is uncertain (Sepsis: {sepsis_prob:.1%}). Consider additional clinical assessment, laboratory tests, and expert consultation. Monitor closely for clinical deterioration.")
+            st.warning(f"🤔 **UNCERTAIN PREDICTION**: Model is uncertain (Sepsis: {mean_prob:.1%}). Consider additional clinical assessment, laboratory tests, and expert consultation. Monitor closely for clinical deterioration.")
 
 if __name__ == "__main__":
     main()
