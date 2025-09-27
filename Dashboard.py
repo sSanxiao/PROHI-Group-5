@@ -694,15 +694,30 @@ def main():
         if mean_prob >= CONFIG['THRESHOLD_SEPSIS']:
             if consensus_pct >= 70:
                 st.error("🚨 **HIGH PRIORITY**: Strong consensus for sepsis risk. Immediate clinical evaluation and intervention recommended.")
+                col1, col2, col3 = st.columns([2,3,2])
+                with col2:
+                    st.image("assets/priority/5.png", use_container_width=True)
             else:
                 st.warning("⚠️ **MODERATE PRIORITY**: Sepsis risk detected with some uncertainty. Close monitoring and clinical assessment advised.")
+                col1, col2, col3 = st.columns([2,3,2])
+                with col2:
+                    st.image("assets/priority/4.png", use_container_width=True)
         elif mean_prob <= CONFIG['THRESHOLD_NO_SEPSIS']:
             if consensus_pct >= 70:
                 st.success("✅ **LOW PRIORITY**: Strong consensus for low sepsis risk. Continue routine monitoring per protocol.")
+                col1, col2, col3 = st.columns([2,3,2])
+                with col2:
+                    st.image("assets/priority/1.png", use_container_width=True)
             else:
                 st.info("ℹ️ **ROUTINE MONITORING**: Low sepsis risk indicated but maintain standard care vigilance.")
+                col1, col2, col3 = st.columns([2,3,2])
+                with col2:
+                    st.image("assets/priority/2.png", use_container_width=True)
         else:
             st.warning(f"🤔 **UNCERTAIN PREDICTION**: Model is uncertain (Sepsis: {mean_prob:.1%}). Consider additional clinical assessment, laboratory tests, and expert consultation. Monitor closely for clinical deterioration.")
+            col1, col2, col3 = st.columns([2,3,2])
+            with col2:
+                st.image("assets/priority/3.png", use_container_width=True)
 
 if __name__ == "__main__":
     main()
