@@ -81,7 +81,7 @@ FEATURE_COLUMNS = [
 
 # Keep all features in categories for UI organization
 FEATURE_CATEGORIES = {
-    "Time Features": ['Hour', 'HospAdmTime', 'ICULOS'],
+    "Temporal and Stay Duration": ['Hour', 'HospAdmTime', 'ICULOS'],
     "Vital Signs": ['HR', 'O2Sat', 'Temp', 'SBP', 'MAP', 'DBP', 'Resp', 'EtCO2'],
     "Blood Gas": ['BaseExcess', 'HCO3', 'FiO2', 'pH', 'PaCO2', 'SaO2'],
     "Organ Function": ['AST', 'BUN', 'Alkalinephos', 'Creatinine'],
@@ -160,15 +160,7 @@ def load_model():
 
 def get_input_constraints(feature):
     """Get very permissive min/max constraints for input fields"""
-    if feature in NORMAL_RANGES:
-        normal_min, normal_max = NORMAL_RANGES[feature]
-        # Very wide ranges to avoid any constraint errors
-        min_val = 0.0 if normal_min >= 0 else normal_min * 10.0  # Allow very low values
-        max_val = normal_max * 10.0  # Allow very high abnormal values
-        return min_val, max_val
-    else:
-        # Very wide default range for features without defined ranges
-        return 0.0, 10000.0
+    return -100000.0, 100000.0  # Very wide range for all features
 
 def generate_random_patient_data():
     """Select a random real patient from our balanced sample set"""
@@ -398,14 +390,11 @@ def create_advisory_board_visualization(tree_predictions, tree_scores):
 
 def main():
     st.markdown('<h1 class="main-header">🩺 PROHI Sepsis Prediction Dashboard</h1>', unsafe_allow_html=True)
-    st.markdown('<h2 class="sub-header">Random Forest Advisory Board - 100 Trees for Sepsis Detection</h2>', unsafe_allow_html=True)
     
     st.sidebar.image(CONFIG['LOGO_PATH'], width=200)
     st.sidebar.markdown("## About")
     st.sidebar.info("""
-    This dashboard uses a Random Forest model where each tree acts as an independent "advisor" 
-    contributing to sepsis diagnosis. The advisory board visualization shows how 
-    individual trees vote and their confidence scores combine for the final prediction.
+    This dashboard uses a Random Forest model to predict sepsis risk.
     """)
     
     # Load sample patients at startup
@@ -440,7 +429,7 @@ def main():
         Please ensure features are in the exact same order as during training.""")
         return
     
-    st.success(f"✅ Random Forest model loaded successfully! (100 trees ready to advise)")
+    st.success(f"✅ Model loaded successfully!")
     
     st.markdown('<h3 class="sub-header">📋 Patient Information Input</h3>', unsafe_allow_html=True)
     
@@ -510,7 +499,6 @@ def main():
                             options=[0, 1], 
                             index=default_gender if default_gender in [0, 1] else 0,
                             format_func=lambda x: "Female" if x == 0 else "Male",
-                            help="0=Female, 1=Male",
                             key=session_key,
                             disabled=st.session_state.get('inputs_locked', False)
                         )
@@ -520,7 +508,7 @@ def main():
                             f"{feature}", 
                             options=list(range(24)), 
                             index=default_hour if 0 <= default_hour < 24 else 0,
-                            help="Hour of the day (0-23)",
+
                             key=session_key,
                             disabled=st.session_state.get('inputs_locked', False)
                         )
@@ -531,7 +519,7 @@ def main():
                             min_value=0,
                             max_value=1000,
                             value=default_iculos if 0 <= default_iculos <= 1000 else 0,
-                            help="ICU Length of Stay (days)",
+
                             key=session_key,
                             disabled=st.session_state.get('inputs_locked', False)
                         )
@@ -541,10 +529,10 @@ def main():
                         
                         if feature in NORMAL_RANGES:
                             normal_min, normal_max = NORMAL_RANGES[feature]
-                            help_text = f"Normal range: {normal_min}-{normal_max} (Input range: {min_val:.1f}-{max_val:.1f})"
+
                             default_val = (normal_min + normal_max) / 2
                         else:
-                            help_text = f"Enter the measured value (Range: {min_val:.1f}-{max_val:.1f})"
+
                             default_val = min_val
                         
                         # Use session state value if available, otherwise use default
@@ -567,7 +555,7 @@ def main():
                             max_value=float(max_val),
                             value=float(current_val),
                             step=step,
-                            help=help_text,
+
                             key=session_key,
                             disabled=st.session_state.get('inputs_locked', False)
                         )
@@ -648,124 +636,56 @@ def main():
         
         st.plotly_chart(fig_dist, use_container_width=True)
         
-        # Show summary statistics in Streamlit
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Mean Score", f"{np.mean(tree_scores):.3f}")
-        with col2:
-            st.metric("Trees for Sepsis", f"{sum(s >= CONFIG['THRESHOLD_SEPSIS'] for s in tree_scores)}")
-        with col3:
-            st.metric("Trees for No Sepsis", f"{sum(s <= CONFIG['THRESHOLD_NO_SEPSIS'] for s in tree_scores)}")
-        with col4:
-            st.metric("Uncertain Trees", f"{sum(CONFIG['THRESHOLD_NO_SEPSIS'] < s < CONFIG['THRESHOLD_SEPSIS'] for s in tree_scores)}")
-        
-        # Show decision based on mean probability
-        if mean_prob >= CONFIG['THRESHOLD_SEPSIS']:
-            st.error(f"🚨 **SEPSIS RISK DETECTED** (Mean Confidence: {mean_prob:.1%})")
-        elif mean_prob <= CONFIG['THRESHOLD_NO_SEPSIS']:
-            st.success(f"✅ **LOW SEPSIS RISK** (Mean Confidence: {1-mean_prob:.1%})")
-        else:
-            st.warning(f"⚠️ **UNCERTAIN PREDICTION** (Sepsis: {mean_prob:.1%}, No Sepsis: {1-mean_prob:.1%})")
-        
-        # Create and show parliament visualization
-        fig, sepsis_votes, no_sepsis_votes, uncertain_votes = create_advisory_board_visualization(
-            tree_preds, tree_scores
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Show tree agreement statistics
-        st.markdown("### 📊 Tree Agreement Analysis")
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.markdown(f"""
-            <div class="doctor-card sepsis-positive">
-                <h4>🔴 Sepsis</h4>
-                <h2>{sepsis_votes}</h2>
-                <p>trees</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown(f"""
-            <div class="doctor-card sepsis-negative">
-                <h4>🟢 No Sepsis</h4>
-                <h2>{no_sepsis_votes}</h2>
-                <p>trees</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col3:
-            st.markdown(f"""
-            <div class="doctor-card sepsis-unsure">
-                <h4>🟡 Uncertain</h4>
-                <h2>{uncertain_votes}</h2>
-                <p>trees</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # Show tree disagreement
-        disagreement = np.std(tree_scores)
-        st.markdown(f"""
-        ### 🎯 Tree Consensus Analysis
-        - Mean prediction: {mean_prob:.3f}
-        - Standard deviation: {disagreement:.3f}
-        - Strong predictions (>0.8 or <0.2): {((tree_scores > 0.8).sum() + (tree_scores < 0.2).sum())} trees
-        - Uncertain predictions (0.4-0.6): {((tree_scores >= 0.4) & (tree_scores <= 0.6)).sum()} trees
-        """)
-        
-        st.markdown("---")
-        st.markdown('<h3 class="sub-header">📊 Detailed Analysis</h3>', unsafe_allow_html=True)
-        
-        # Create probability scores for histogram
-        prob_scores = []
-        decisions = []
-        
-        for score in tree_scores:
-            prob_scores.append(score)
-            
-            if score >= CONFIG['THRESHOLD_SEPSIS']:
-                decisions.append("Sepsis")
-            elif score <= CONFIG['THRESHOLD_NO_SEPSIS']:
-                decisions.append("No Sepsis")
-            else:
-                decisions.append("Uncertain")
-        
-        score_df = pd.DataFrame({
-            'Advisor': [f"Tree {i+1}" for i in range(len(tree_scores))],
-            'Sepsis_Probability': prob_scores,
-            'Decision': decisions
-        })
+        # Calculate votes and consensus first
+        sepsis_votes = sum(s >= CONFIG['THRESHOLD_SEPSIS'] for s in tree_scores)
+        no_sepsis_votes = sum(s <= CONFIG['THRESHOLD_NO_SEPSIS'] for s in tree_scores)
+        uncertain_votes = sum(CONFIG['THRESHOLD_NO_SEPSIS'] < s < CONFIG['THRESHOLD_SEPSIS'] for s in tree_scores)
         
         # Calculate consensus percentage
         total_decisive = sepsis_votes + no_sepsis_votes
-        consensus_pct = max(sepsis_votes, no_sepsis_votes) / len(tree_preds) * 100 if len(tree_preds) > 0 else 0
-        
-        if consensus_pct >= CONFIG['CONSENSUS_STRONG']:
-            consensus_level = "Strong"
-            consensus_color = "green" if no_sepsis_votes > sepsis_votes else "red"
-        elif consensus_pct >= CONFIG['CONSENSUS_MODERATE']:
-            consensus_level = "Moderate"
-            consensus_color = "orange"
-        else:
-            consensus_level = "Weak"
-            consensus_color = "gray"
-        
-        # Calculate average probability
-        avg_sepsis_prob = np.mean(tree_scores)
-        
-        st.markdown(f"""
-        **Consensus Analysis:**
-        - <span style="color:{consensus_color}">**{consensus_level} Consensus**</span> ({consensus_pct:.1f}% agreement)
-        - Trees voting Sepsis: **{sepsis_votes}**
-        - Trees voting No Sepsis: **{no_sepsis_votes}**
-        - Trees uncertain: **{uncertain_votes}**
-        - Average sepsis probability: **{avg_sepsis_prob:.1%}**
-        - Final model prediction: **{mean_prob:.1%}** (Sepsis), **{1-mean_prob:.1%}** (No Sepsis)
-        
-        **Clinical Recommendation:**
-        """, unsafe_allow_html=True)
+        consensus_pct = max(sepsis_votes, no_sepsis_votes) / len(tree_scores) * 100 if len(tree_scores) > 0 else 0
+
+        # Show summary statistics in Streamlit
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
+        with col1:
+            st.metric("Mean Score", f"{np.mean(tree_scores):.3f}")
+        with col2:
+            st.markdown(f"""
+            <div style='text-align: center'>
+                <p style='margin-bottom: 0px; color: gray; font-size: 14px'>Trees for Sepsis</p>
+                <p style='margin: 0; color: #f44336; font-size: 2rem; font-weight: 600'>{sepsis_votes}</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col3:
+            st.markdown(f"""
+            <div style='text-align: center'>
+                <p style='margin-bottom: 0px; color: gray; font-size: 14px'>Trees for No Sepsis</p>
+                <p style='margin: 0; color: #4caf50; font-size: 2rem; font-weight: 600'>{no_sepsis_votes}</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col4:
+            st.markdown(f"""
+            <div style='text-align: center'>
+                <p style='margin-bottom: 0px; color: gray; font-size: 14px'>Uncertain Trees</p>
+                <p style='margin: 0; color: #ff9800; font-size: 2rem; font-weight: 600'>{uncertain_votes}</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col5:
+            st.markdown(f"""
+            <div style='text-align: center'>
+                <p style='margin-bottom: 0px; color: gray; font-size: 14px'>Strong Predictions (>0.8 or <0.2)</p>
+                <p style='margin: 0; font-size: 2rem; font-weight: 600'>{((tree_scores > 0.8).sum() + (tree_scores < 0.2).sum())}</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col6:
+            st.markdown(f"""
+            <div style='text-align: center'>
+                <p style='margin-bottom: 0px; color: gray; font-size: 14px'>Consensus</p>
+                <p style='margin: 0; font-size: 2rem; font-weight: 600'>{consensus_pct:.1f}%</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("### Clinical Recommendation")
         
         if mean_prob >= CONFIG['THRESHOLD_SEPSIS']:
             if consensus_pct >= 70:
