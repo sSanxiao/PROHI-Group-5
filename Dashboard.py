@@ -361,11 +361,11 @@ def create_advisory_board_visualization(tree_predictions, tree_scores):
     )
     
     fig.update_layout(
-        title=dict(
-            text=f"Random Forest Advisory Board",
-            x=0.5,
-            font=dict(size=16)
-        ),
+        # title=dict(
+        #     text=f"Random Forest Advisory Board",
+        #     x=0.5,
+        #     font=dict(size=16)
+        # ),
         xaxis=dict(
             showgrid=False,
             zeroline=False,
@@ -684,6 +684,10 @@ def main():
                 <p style='margin: 0; font-size: 2rem; font-weight: 600'>{consensus_pct:.1f}%</p>
             </div>
             """, unsafe_allow_html=True)
+
+        # Create and show advisory board visualization
+        fig, _, _, _ = create_advisory_board_visualization(tree_scores, tree_scores)
+        st.plotly_chart(fig, use_container_width=True)
 
         st.markdown("### Clinical Recommendation")
         
