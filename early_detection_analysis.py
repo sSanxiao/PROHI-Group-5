@@ -105,14 +105,26 @@ for patient_id in tqdm(sepsis_test_patients, desc="Analyzing patients"):
 # Convert earliest detections to list
 detection_hours = list(earliest_detections.values())
 
+# Count undetected patients
+undetected_count = len(sepsis_test_patients) - len(detection_hours)
+
 # Create detection time distribution plot
 plt.figure(figsize=(12, 6))
-plt.hist(detection_hours, bins=20, color='skyblue', edgecolor='black')
+
+# Plot detected cases in blue
+plt.hist(detection_hours, bins=20, color='skyblue', edgecolor='black', 
+         label=f'Early Detection ({len(detection_hours)} patients)')
+
+# Add undetected cases as a single bar at 0 hours in red
+if undetected_count > 0:
+    plt.bar(0, undetected_count, color='red', width=1.2, 
+            label=f'No Early Detection ({undetected_count} patients)')
+
 plt.title('Distribution of Earliest Sepsis Detection Times (24h Window)')
 plt.xlabel('Hours Before Actual Sepsis Onset')
 plt.ylabel('Number of Patients')
-plt.axvline(np.mean(detection_hours), color='red', linestyle='--', 
-            label=f'Mean: {np.mean(detection_hours):.1f} hours')
+plt.axvline(np.mean(detection_hours), color='green', linestyle='--', 
+            label=f'Mean Detection Time: {np.mean(detection_hours):.1f} hours')
 plt.legend()
 plt.savefig('assets/early_detection_distribution.png', dpi=300, bbox_inches='tight')
 plt.close()
@@ -126,7 +138,7 @@ plt.title('Average Prediction Confidence vs Hours Before Sepsis (24h Window)')
 plt.xlabel('Hours Before Sepsis')
 plt.ylabel('Model Confidence')
 plt.axhline(y=0.55, color='red', linestyle='--', label='Detection Threshold (0.55)')
-plt.xlim(0, 24)  # Show only 24-hour window
+plt.xlim(24, 0)  # Reverse x-axis from 24 to 0
 plt.legend()
 plt.savefig('assets/confidence_progression.png', dpi=300, bbox_inches='tight')
 plt.close()
@@ -134,6 +146,7 @@ plt.close()
 # Print summary statistics
 print(f"\nEarly Detection Statistics (24h Window):")
 print(f"Patients with early detection: {len(detection_hours)} out of {len(sepsis_test_patients)}")
+print(f"Patients without early detection: {undetected_count}")
 print(f"Average early detection: {np.mean(detection_hours):.1f} hours before onset")
 print(f"Median early detection: {np.median(detection_hours):.1f} hours before onset")
 print(f"Earliest detection: {np.max(detection_hours):.1f} hours before onset")
