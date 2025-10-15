@@ -70,7 +70,7 @@ def about_page():
     st.markdown("""
     For questions, feedback, or support, please contact any of our team members.
     
-    **Project Repository**: [GitHub - PROHI-Group-5](https://github.com/PROHI-Group-5)
+    **Project Repository**: [GitHub - PROHI-Group-5](https://github.com/sSanxiao/PROHI-Group-5)
     """)
     
     # Add footer
