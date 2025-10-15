@@ -35,13 +35,13 @@ FEATURE_COLUMNS = [
 ]
 
 FEATURE_CATEGORIES = {
-    "Temporal and Stay Duration": ['Hour', 'HospAdmTime', 'ICULOS'],
+    "Stay Duration": ['HospAdmTime', 'ICULOS'],
     "Vital Signs": ['HR', 'O2Sat', 'Temp', 'SBP', 'MAP', 'DBP', 'Resp', 'EtCO2'],
     "Blood Gas": ['BaseExcess', 'HCO3', 'FiO2', 'pH', 'PaCO2', 'SaO2'],
     "Organ Function": ['AST', 'BUN', 'Alkalinephos', 'Creatinine'],
     "Metabolic": ['Calcium', 'Chloride', 'Glucose', 'Lactate', 'Magnesium', 'Phosphate', 'Potassium'],
     "Hematology": ['Bilirubin_direct', 'Bilirubin_total', 'TroponinI', 'Hct', 'Hgb', 'PTT', 'WBC', 'Fibrinogen', 'Platelets'],
-    "Demographics": ['Age', 'Gender']
+    "Demographics": ['Age', 'Gender', 'Hour']  # Moved Hour to Demographics as it's a temporal marker
 }
 
 # Normal ranges for features
@@ -385,34 +385,99 @@ def predictive_analytics():
     col_refresh, col_info, col_reset = st.columns([1, 2, 1])
     
     with col_refresh:
-        if st.button("🎲 Select Random Patient", type="secondary", 
+        if st.button("🎲 Select Random Patient for demonstration purposes", type="secondary", 
                     help="Select a random real patient from our dataset",
                     disabled=st.session_state.get('inputs_locked', False)):
             st.session_state.refresh_values = True
             st.session_state.inputs_locked = True
     
     with col_info:
-        if 'refresh_values' in st.session_state and hasattr(SAMPLE_PATIENTS, 'iloc'):
-            # Get actual label for the current patient
-            current_data = {feature: st.session_state.get(feature, 0) for feature in FEATURE_COLUMNS}
-            matching_patients = SAMPLE_PATIENTS[SAMPLE_PATIENTS[FEATURE_COLUMNS].eq(current_data).all(axis=1)]
-            if not matching_patients.empty:
-                actual_label = matching_patients['SepsisLabel'].iloc[0]
-                if actual_label == 1:
-                    st.warning("🏥 Patient has SEPSIS")
-                else:
-                    st.info("🏥 Patient does NOT have sepsis")
+        # Initialize the show_status in session state if not present
+        if 'show_status' not in st.session_state:
+            st.session_state.show_status = False
+            
+        # Set show_status to True when random patient is selected
+        if st.session_state.get('refresh_values', False) and st.session_state.get('inputs_locked', False):
+            st.session_state.show_status = True
+            
+            # Store current patient data in session state
+            try:
+                random_patient = SAMPLE_PATIENTS.sample(n=1).iloc[0]
+                st.session_state.current_patient = {
+                    'id': random_patient.name,
+                    'hour': random_patient['Hour'],
+                    'status': random_patient['SepsisLabel'],
+                    'patient_id': random_patient['Patient_ID']
+                }
+            except Exception as e:
+                st.error("Error selecting random patient")
+                
+        # Show status if it's enabled
+        if st.session_state.get('show_status', False) and hasattr(SAMPLE_PATIENTS, 'iloc'):
+            try:
+                if hasattr(st.session_state, 'current_patient'):
+                    current_patient = st.session_state.current_patient
+                    
+                    # Get all records for this patient from the full dataset
+                    if 'data' in st.session_state and st.session_state.data['df'] is not None:
+                        full_df = st.session_state.data['df']
+                    else:
+                        full_df = pd.read_csv("./data/cleaned_dataset.csv")
+                    
+                    # Get patient ID and all their records
+                    patient_id = current_patient['patient_id']
+                    all_patient_records = full_df[full_df['Patient_ID'] == patient_id].sort_values('Hour')
+                    
+                    # Get current hour status
+                    current_hour_status = current_patient['status']
+                    current_hour = current_patient['hour']
+                    
+                    # Get future records and check if sepsis develops later
+                    future_records = all_patient_records[all_patient_records['Hour'] > current_hour]
+                    will_develop_sepsis = (future_records['SepsisLabel'] == 1).any() if not future_records.empty else False
+                    
+                    # Get past records and check if had sepsis before
+                    past_records = all_patient_records[all_patient_records['Hour'] < current_hour]
+                    had_sepsis_before = (past_records['SepsisLabel'] == 1).any() if not past_records.empty else False
+                    
+                    # Display status header
+                    st.markdown("### Patient Sepsis Status")
+                    
+                    if current_hour_status == 1:
+                        # Currently has sepsis
+                        st.error(f"🚨 Patient currently HAS SEPSIS at hour {current_hour}")
+                    elif will_develop_sepsis:
+                        # Currently no sepsis but will develop later
+                        next_sepsis_hour = future_records[future_records['SepsisLabel'] == 1]['Hour'].min()
+                        st.info(f"⚠️ Patient does NOT have sepsis at current hour {current_hour}")
+                        st.warning(f"⚠️ Alert: Patient will develop sepsis at hour {next_sepsis_hour}")
+                    elif had_sepsis_before:
+                        # Had sepsis before but not now and not in future
+                        st.info(f"ℹ️ Patient does NOT have sepsis at current hour {current_hour} (had sepsis in earlier hours)")
+                    else:
+                        # Never had/has/will have sepsis
+                        st.success(f"✅ Patient does NOT develop sepsis at any time (current hour: {current_hour})")
+            except Exception as e:
+                st.error(f"Error displaying patient status: {str(e)}")
     
     with col_reset:
         if st.button("🔄 Reset", type="secondary",
                     help="Reset fields and enable editing",
                     disabled=not st.session_state.get('inputs_locked', False)):
+            # Clear all session state flags and values
             st.session_state.inputs_locked = False
             st.session_state.refresh_values = False
+            st.session_state.show_status = False  # Explicitly set show_status to False
+            
             # Clear all feature values
             for feature in FEATURE_COLUMNS:
                 if feature in st.session_state:
                     del st.session_state[feature]
+            
+            # Clear any stored patient data
+            if 'current_patient' in st.session_state:
+                del st.session_state.current_patient
+            
             st.rerun()
     
     # Generate random data if refresh button was pressed
@@ -427,7 +492,7 @@ def predictive_analytics():
     
     # Define category icons
     category_icons = {
-        "Temporal and Stay Duration": "⏱️",
+        "Stay Duration": "⌛",
         "Vital Signs": "❤️",
         "Blood Gas": "💨",
         "Organ Function": "🫁",
@@ -436,13 +501,60 @@ def predictive_analytics():
         "Demographics": "👤"
     }
     
+    # Add custom CSS for expander styling
+    st.markdown("""
+        <style>
+        /* Target the expander header */
+        div[data-testid="stExpander"] div[role="button"] {
+            background: linear-gradient(to right, #f0f2f6, #e0e5ec) !important;
+            border-radius: 8px !important;
+            padding: 15px 20px !important;
+            border: none !important;
+            box-shadow: 3px 3px 6px #b8b9be, -3px -3px 6px #ffffff !important;
+            transition: all 0.3s ease !important;
+        }
+        
+        /* Hover effect */
+        div[data-testid="stExpander"] div[role="button"]:hover {
+            background: linear-gradient(to right, #e0e5ec, #d1d6dd) !important;
+            box-shadow: 2px 2px 4px #b8b9be, -2px -2px 4px #ffffff !important;
+        }
+        
+        /* Style the text inside expander */
+        div[data-testid="stExpander"] div[role="button"] p {
+            font-size: 1.2rem !important;
+            font-weight: 600 !important;
+            color: #2E86AB !important;
+            text-shadow: 1px 1px 1px rgba(255,255,255,0.5) !important;
+            margin: 0 !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 10px !important;
+        }
+        
+        /* Make emojis larger */
+        div[data-testid="stExpander"] div[role="button"] p {
+            font-size: 1.2rem !important;
+        }
+        
+        /* Active state */
+        div[data-testid="stExpander"] div[role="button"][aria-expanded="true"] {
+            background: linear-gradient(to right, #e0e5ec, #d1d6dd) !important;
+            box-shadow: inset 2px 2px 5px #b8b9be, inset -2px -2px 5px #ffffff !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
     # Create expanders for each category
     for category, features in FEATURE_CATEGORIES.items():
         icon = category_icons.get(category, "📋")
         
-        with st.expander(f"{icon} {category}", expanded=True):
-            st.markdown(f'<div class="feature-category">', unsafe_allow_html=True)
-            st.markdown(f'<div class="feature-category-header"><span class="feature-category-icon">{icon}</span>{category}</div>', unsafe_allow_html=True)
+        # Special case for Stay Duration to avoid emoji duplication
+        display_category = category
+        display_icon = icon
+        
+        with st.expander(f"{display_icon}  {display_category}", expanded=True):
+
             
             # Create a grid layout for features
             cols = st.columns(3)
@@ -451,8 +563,8 @@ def predictive_analytics():
                 col_idx = j % 3
                 
                 with cols[col_idx]:
-                    st.markdown(f'<div class="feature-card">', unsafe_allow_html=True)
-                    st.markdown(f'<div class="feature-label">{feature}</div>', unsafe_allow_html=True)
+     
+                    # st.markdown(f'<div class="feature-label">{feature}</div>', unsafe_allow_html=True)
                     # Use session state value if available, otherwise use default
                     session_key = f"input_{feature}"
                     
