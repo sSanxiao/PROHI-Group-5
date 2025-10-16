@@ -578,114 +578,114 @@ def predictive_analytics():
     if model_type == "Random Forest":
         st.markdown('<h3 class="sub-header">📋 Single Timepoint Patient Information</h3>', unsafe_allow_html=True)
     
-    # Add refresh and reset buttons
-    col_refresh, col_info, col_reset = st.columns([1, 2, 1])
-    
-    with col_refresh:
-        if st.button("🎲 Select Random Patient", type="secondary", 
-                    help="Select a random real patient from our dataset",
-                    disabled=st.session_state.get('inputs_locked', False)):
-            st.session_state.refresh_values = True
-            st.session_state.inputs_locked = True
-            # Clear sequence data when switching to random forest
-            st.session_state.sequence_data = []
-    
-    with col_info:
-                # Initialize the show_status in session state if not present
-                if 'show_status' not in st.session_state:
-                    st.session_state.show_status = False
-                    
-                # Set show_status to True when random patient is selected
-                if st.session_state.get('refresh_values', False) and st.session_state.get('inputs_locked', False):
-                    st.session_state.show_status = True
-                    
-                    # Store current patient data in session state
-                    try:
-                        random_patient = SAMPLE_PATIENTS.sample(n=1).iloc[0]
-                        st.session_state.current_patient = {
-                            'id': random_patient.name,
-                            'hour': random_patient['Hour'],
-                            'status': random_patient['SepsisLabel'],
-                            'patient_id': random_patient['Patient_ID']
-                        }
-                    except Exception as e:
-                        st.error("Error selecting random patient")
+        # Add refresh and reset buttons
+        col_refresh, col_info, col_reset = st.columns([1, 2, 1])
+        
+        with col_refresh:
+            if st.button("🎲 Select Random Patient", type="secondary", 
+                        help="Select a random real patient from our dataset",
+                        disabled=st.session_state.get('inputs_locked', False)):
+                st.session_state.refresh_values = True
+                st.session_state.inputs_locked = True
+                # Clear sequence data when switching to random forest
+                st.session_state.sequence_data = []
+        
+        with col_info:
+                    # Initialize the show_status in session state if not present
+                    if 'show_status' not in st.session_state:
+                        st.session_state.show_status = False
                         
-                # Show status if it's enabled
-                if st.session_state.get('show_status', False) and hasattr(SAMPLE_PATIENTS, 'iloc'):
-                    try:
-                        if hasattr(st.session_state, 'current_patient'):
-                            current_patient = st.session_state.current_patient
+                    # Set show_status to True when random patient is selected
+                    if st.session_state.get('refresh_values', False) and st.session_state.get('inputs_locked', False):
+                        st.session_state.show_status = True
+                        
+                        # Store current patient data in session state
+                        try:
+                            random_patient = SAMPLE_PATIENTS.sample(n=1).iloc[0]
+                            st.session_state.current_patient = {
+                                'id': random_patient.name,
+                                'hour': random_patient['Hour'],
+                                'status': random_patient['SepsisLabel'],
+                                'patient_id': random_patient['Patient_ID']
+                            }
+                        except Exception as e:
+                            st.error("Error selecting random patient")
                             
-                            # Get all records for this patient from the full dataset
-                            if 'data' in st.session_state and st.session_state.data['df'] is not None:
-                                full_df = st.session_state.data['df']
+                    # Show status if it's enabled
+                    if st.session_state.get('show_status', False) and hasattr(SAMPLE_PATIENTS, 'iloc'):
+                        try:
+                            if hasattr(st.session_state, 'current_patient'):
+                                current_patient = st.session_state.current_patient
+                                
+                                # Get all records for this patient from the full dataset
+                                if 'data' in st.session_state and st.session_state.data['df'] is not None:
+                                    full_df = st.session_state.data['df']
+                                else:
+                                    full_df = pd.read_csv("./data/cleaned_dataset.csv")
+                                
+                                # Get patient ID and all their records
+                                patient_id = current_patient['patient_id']
+                                all_patient_records = full_df[full_df['Patient_ID'] == patient_id].sort_values('Hour')
+                                
+                                # Get current hour status
+                                current_hour_status = current_patient['status']
+                                current_hour = current_patient['hour']
+                                
+                                # Get future records and check if sepsis develops later
+                                future_records = all_patient_records[all_patient_records['Hour'] > current_hour]
+                                will_develop_sepsis = (future_records['SepsisLabel'] == 1).any() if not future_records.empty else False
+                                
+                                # Get past records and check if had sepsis before
+                                past_records = all_patient_records[all_patient_records['Hour'] < current_hour]
+                                had_sepsis_before = (past_records['SepsisLabel'] == 1).any() if not past_records.empty else False
+                                
+                                # Display status header
+                                st.markdown("### Patient Sepsis Status")
+                                
+                                if current_hour_status == 1:
+                                    # Currently has sepsis
+                                    st.error(f"🚨 Patient currently HAS SEPSIS at hour {current_hour}")
+                                elif will_develop_sepsis:
+                                    # Currently no sepsis but will develop later
+                                    next_sepsis_hour = future_records[future_records['SepsisLabel'] == 1]['Hour'].min()
+                                    st.info(f"⚠️ Patient does NOT have sepsis at current hour {current_hour}")
+                                    st.warning(f"⚠️ Alert: Patient will develop sepsis at hour {next_sepsis_hour}")
+                                elif had_sepsis_before:
+                                    # Had sepsis before but not now and not in future
+                                    st.info(f"ℹ️ Patient does NOT have sepsis at current hour {current_hour} (had sepsis in earlier hours)")
                             else:
-                                full_df = pd.read_csv("./data/cleaned_dataset.csv")
-                            
-                            # Get patient ID and all their records
-                            patient_id = current_patient['patient_id']
-                            all_patient_records = full_df[full_df['Patient_ID'] == patient_id].sort_values('Hour')
-                            
-                            # Get current hour status
-                            current_hour_status = current_patient['status']
-                            current_hour = current_patient['hour']
-                            
-                            # Get future records and check if sepsis develops later
-                            future_records = all_patient_records[all_patient_records['Hour'] > current_hour]
-                            will_develop_sepsis = (future_records['SepsisLabel'] == 1).any() if not future_records.empty else False
-                            
-                            # Get past records and check if had sepsis before
-                            past_records = all_patient_records[all_patient_records['Hour'] < current_hour]
-                            had_sepsis_before = (past_records['SepsisLabel'] == 1).any() if not past_records.empty else False
-                            
-                            # Display status header
-                            st.markdown("### Patient Sepsis Status")
-                            
-                            if current_hour_status == 1:
-                                # Currently has sepsis
-                                st.error(f"🚨 Patient currently HAS SEPSIS at hour {current_hour}")
-                            elif will_develop_sepsis:
-                                # Currently no sepsis but will develop later
-                                next_sepsis_hour = future_records[future_records['SepsisLabel'] == 1]['Hour'].min()
-                                st.info(f"⚠️ Patient does NOT have sepsis at current hour {current_hour}")
-                                st.warning(f"⚠️ Alert: Patient will develop sepsis at hour {next_sepsis_hour}")
-                            elif had_sepsis_before:
-                                # Had sepsis before but not now and not in future
-                                st.info(f"ℹ️ Patient does NOT have sepsis at current hour {current_hour} (had sepsis in earlier hours)")
-                        else:
-                                # Never had/has/will have sepsis
-                                st.success(f"✅ Patient does NOT develop sepsis at any time (current hour: {current_hour})")
-                    except Exception as e:
-                        st.error(f"Error displaying patient status: {str(e)}")
-    
-    with col_reset:
-        if st.button("🔄 Reset", type="secondary",
-                    help="Reset fields and enable editing",
-                    disabled=not st.session_state.get('inputs_locked', False)):
-                    # Clear all session state flags and values
-            st.session_state.inputs_locked = False
+                                    # Never had/has/will have sepsis
+                                    st.success(f"✅ Patient does NOT develop sepsis at any time (current hour: {current_hour})")
+                        except Exception as e:
+                            st.error(f"Error displaying patient status: {str(e)}")
+        
+        with col_reset:
+            if st.button("🔄 Reset", type="secondary",
+                        help="Reset fields and enable editing",
+                        disabled=not st.session_state.get('inputs_locked', False)):
+                        # Clear all session state flags and values
+                st.session_state.inputs_locked = False
+                st.session_state.refresh_values = False
+                st.session_state.show_status = False  # Explicitly set show_status to False
+                        
+                # Clear all feature values
+                for feature in FEATURE_COLUMNS:
+                    if feature in st.session_state:
+                        del st.session_state[feature]
+                        
+                        # Clear any stored patient data
+                        if 'current_patient' in st.session_state:
+                            del st.session_state.current_patient
+                        
+                st.rerun()
+        
+        # Generate random data if refresh button was pressed
+        if st.session_state.get('refresh_values', False):
+            random_data = generate_random_patient_data()
+            if random_data is not None:
+                st.session_state.update(random_data)
             st.session_state.refresh_values = False
-            st.session_state.show_status = False  # Explicitly set show_status to False
-                    
-            # Clear all feature values
-            for feature in FEATURE_COLUMNS:
-                if feature in st.session_state:
-                    del st.session_state[feature]
-                    
-                    # Clear any stored patient data
-                    if 'current_patient' in st.session_state:
-                        del st.session_state.current_patient
-                    
             st.rerun()
-    
-    # Generate random data if refresh button was pressed
-    if st.session_state.get('refresh_values', False):
-        random_data = generate_random_patient_data()
-        if random_data is not None:
-            st.session_state.update(random_data)
-        st.session_state.refresh_values = False
-        st.rerun()
     else:
         # GRU model input - temporal sequence
         st.markdown('<h3 class="sub-header">📋 Temporal Sequence Patient Information</h3>', unsafe_allow_html=True)
@@ -908,7 +908,7 @@ def predictive_analytics():
             with st.expander(f"{display_icon}  {display_category}", expanded=True):
                 
                 # Create a grid layout for features
-            cols = st.columns(3)
+                cols = st.columns(3)
             
             for j, feature in enumerate(features):
                 col_idx = j % 3
@@ -1008,18 +1008,18 @@ def predictive_analytics():
             
             # Different prediction logic based on model type
             if model_type == "Random Forest":
-        # Create DataFrame with features in exact order
-        X_input = pd.DataFrame([input_data])[FEATURE_COLUMNS]
-        X_input = X_input.fillna(0)  # Fill any missing values with 0
-        
-        # Scale the input data using the loaded scaler
-        X_input_scaled = scaler.transform(X_input)
-        
-        # Get predictions from all trees
-        tree_preds, tree_scores = get_individual_tree_predictions(model, X_input_scaled)
-        
-        # Calculate mean probability
-        mean_prob = np.mean(tree_scores)
+                # Create DataFrame with features in exact order
+                X_input = pd.DataFrame([input_data])[FEATURE_COLUMNS]
+                X_input = X_input.fillna(0)  # Fill any missing values with 0
+                
+                # Scale the input data using the loaded scaler
+                X_input_scaled = scaler.transform(X_input)
+                
+                # Get predictions from all trees
+                tree_preds, tree_scores = get_individual_tree_predictions(model, X_input_scaled)
+                
+                # Calculate mean probability
+                mean_prob = np.mean(tree_scores)
                 
                 # Set up for visualization
                 show_tree_visualization = True
@@ -1116,324 +1116,324 @@ def predictive_analytics():
         
         st.markdown("---")
             
-            # Different visualization based on model type
-            if model_type == "Random Forest":
-        st.markdown('<h3 class="sub-header">🏛️ Random Forest Advisory Board Decision</h3>', unsafe_allow_html=True)
-        
-        # Add distribution plot of tree predictions
-        fig_dist = go.Figure()
-        
-        # Create scatter plot of tree predictions
-        fig_dist.add_trace(go.Scatter(
-            x=tree_scores,
-            y=np.zeros_like(tree_scores),  # All points on same y-level
-            mode='markers',
-            marker=dict(
-                size=15,
-                color=['#f44336' if s >= CONFIG['THRESHOLD_SEPSIS'] else  # Red for sepsis
-                       '#4caf50' if s <= CONFIG['THRESHOLD_NO_SEPSIS'] else  # Green for no sepsis
-                       '#ff9800' for s in tree_scores],  # Orange for uncertain
-                line=dict(width=1, color='white')
-            ),
-            text=[f"Tree {i+1}<br>Score: {score:.3f}" for i, score in enumerate(tree_scores)],
-            hovertemplate='%{text}<extra></extra>',
-            name='Tree Predictions'
-        ))
-        
-        # Add threshold lines
-        fig_dist.add_vline(x=CONFIG['THRESHOLD_SEPSIS'], 
-                          line_dash="dash", line_color="red",
-                          annotation=dict(
-                              text="Sepsis Threshold",
-                              font=dict(color="red")
-                          ))
-        fig_dist.add_vline(x=CONFIG['THRESHOLD_NO_SEPSIS'], 
-                          line_dash="dash", line_color="green",
-                          annotation=dict(
-                              text="No Sepsis Threshold",
-                              font=dict(color="green")
-                          ))
-        
-        # Update layout
-        fig_dist.update_layout(
-            xaxis=dict(
-                title="Prediction Score",
-                range=[0, 1],  # Fix range from 0 to 1
-                tickformat='.1f',  # Show as decimal
-                gridcolor='lightgray',
-                showgrid=True
-            ),
-            yaxis=dict(
-                showticklabels=False,
-                showgrid=False,
-                zeroline=False
-            ),
-            showlegend=False,
-            plot_bgcolor='white',
-            height=200,
-            margin=dict(l=50, r=50, t=20, b=50)  # Reduced top margin since no title
-        )
-        
-        st.plotly_chart(fig_dist, use_container_width=True)
-        
-        # Calculate votes and consensus first
-        sepsis_votes = sum(s >= CONFIG['THRESHOLD_SEPSIS'] for s in tree_scores)
-        no_sepsis_votes = sum(s <= CONFIG['THRESHOLD_NO_SEPSIS'] for s in tree_scores)
-        uncertain_votes = sum(CONFIG['THRESHOLD_NO_SEPSIS'] < s < CONFIG['THRESHOLD_SEPSIS'] for s in tree_scores)
-        
-        # Calculate consensus percentage
-        consensus_pct = max(sepsis_votes, no_sepsis_votes) / len(tree_scores) * 100 if len(tree_scores) > 0 else 0
+        # Different visualization based on model type
+        if model_type == "Random Forest":
+            st.markdown('<h3 class="sub-header">🏛️ Random Forest Advisory Board Decision</h3>', unsafe_allow_html=True)
+            
+            # Add distribution plot of tree predictions
+            fig_dist = go.Figure()
+            
+            # Create scatter plot of tree predictions
+            fig_dist.add_trace(go.Scatter(
+                x=tree_scores,
+                y=np.zeros_like(tree_scores),  # All points on same y-level
+                mode='markers',
+                marker=dict(
+                    size=15,
+                    color=['#f44336' if s >= CONFIG['THRESHOLD_SEPSIS'] else  # Red for sepsis
+                        '#4caf50' if s <= CONFIG['THRESHOLD_NO_SEPSIS'] else  # Green for no sepsis
+                        '#ff9800' for s in tree_scores],  # Orange for uncertain
+                    line=dict(width=1, color='white')
+                ),
+                text=[f"Tree {i+1}<br>Score: {score:.3f}" for i, score in enumerate(tree_scores)],
+                hovertemplate='%{text}<extra></extra>',
+                name='Tree Predictions'
+            ))
+            
+            # Add threshold lines
+            fig_dist.add_vline(x=CONFIG['THRESHOLD_SEPSIS'], 
+                            line_dash="dash", line_color="red",
+                            annotation=dict(
+                                text="Sepsis Threshold",
+                                font=dict(color="red")
+                            ))
+            fig_dist.add_vline(x=CONFIG['THRESHOLD_NO_SEPSIS'], 
+                            line_dash="dash", line_color="green",
+                            annotation=dict(
+                                text="No Sepsis Threshold",
+                                font=dict(color="green")
+                            ))
+            
+            # Update layout
+            fig_dist.update_layout(
+                xaxis=dict(
+                    title="Prediction Score",
+                    range=[0, 1],  # Fix range from 0 to 1
+                    tickformat='.1f',  # Show as decimal
+                    gridcolor='lightgray',
+                    showgrid=True
+                ),
+                yaxis=dict(
+                    showticklabels=False,
+                    showgrid=False,
+                    zeroline=False
+                ),
+                showlegend=False,
+                plot_bgcolor='white',
+                height=200,
+                margin=dict(l=50, r=50, t=20, b=50)  # Reduced top margin since no title
+            )
+            
+            st.plotly_chart(fig_dist, use_container_width=True)
+            
+            # Calculate votes and consensus first
+            sepsis_votes = sum(s >= CONFIG['THRESHOLD_SEPSIS'] for s in tree_scores)
+            no_sepsis_votes = sum(s <= CONFIG['THRESHOLD_NO_SEPSIS'] for s in tree_scores)
+            uncertain_votes = sum(CONFIG['THRESHOLD_NO_SEPSIS'] < s < CONFIG['THRESHOLD_SEPSIS'] for s in tree_scores)
+            
+            # Calculate consensus percentage
+            consensus_pct = max(sepsis_votes, no_sepsis_votes) / len(tree_scores) * 100 if len(tree_scores) > 0 else 0
 
-        # Show summary statistics in Streamlit
-                col1, col2, col3, col4, col5 = st.columns(5)
-        with col1:
-            st.metric("Mean Score", f"{np.mean(tree_scores):.3f}")
-        with col2:
-            st.markdown(f"""
-            <div style='text-align: center'>
-                <p style='margin-bottom: 0px; color: gray; font-size: 14px'>Trees for Sepsis</p>
-                <p style='margin: 0; color: #f44336; font-size: 2rem; font-weight: 600'>{sepsis_votes}</p>
-            </div>
-            """, unsafe_allow_html=True)
-        with col3:
-            st.markdown(f"""
-            <div style='text-align: center'>
-                <p style='margin-bottom: 0px; color: gray; font-size: 14px'>Trees for No Sepsis</p>
-                <p style='margin: 0; color: #4caf50; font-size: 2rem; font-weight: 600'>{no_sepsis_votes}</p>
-            </div>
-            """, unsafe_allow_html=True)
-        with col4:
-            st.markdown(f"""
-            <div style='text-align: center'>
-                <p style='margin-bottom: 0px; color: gray; font-size: 14px'>Uncertain Trees</p>
-                <p style='margin: 0; color: #ff9800; font-size: 2rem; font-weight: 600'>{uncertain_votes}</p>
-            </div>
-            """, unsafe_allow_html=True)
-        with col5:
-            st.markdown(f"""
-            <div style='text-align: center'>
-                <p style='margin-bottom: 0px; color: gray; font-size: 14px'>Consensus</p>
-                <p style='margin: 0; font-size: 2rem; font-weight: 600'>{consensus_pct:.1f}%</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-        # Create and show advisory board visualization
-        fig, _, _, _ = create_advisory_board_visualization(tree_scores, tree_scores)
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                # GRU model visualization
-                st.markdown('<h3 class="sub-header">🧠 GRU Temporal Prediction</h3>', unsafe_allow_html=True)
-                
-                # Create a temporal visualization of the sequence and prediction
-                if 'sequence_data' in st.session_state and st.session_state.sequence_data:
-                    seq_df = pd.DataFrame(st.session_state.sequence_data)
-                    
-                    # Show sequence statistics
-                    st.markdown("### Prediction Results")
-                    
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Sequence Length", f"{len(seq_df)} hours")
-                    with col2:
-                        st.metric("Sepsis Risk", f"{mean_prob:.1%}")
-                    with col3:
-                        risk_level = "High" if mean_prob >= 0.64 else "Medium" if mean_prob >= 0.24 else "Low"
-                        risk_color = "red" if risk_level == "High" else "orange" if risk_level == "Medium" else "green"
-                        st.markdown(f"""
-                        <div style='text-align: center'>
-                            <p style='margin-bottom: 0px; color: gray; font-size: 14px'>Risk Level</p>
-                            <p style='margin: 0; color: {risk_color}; font-size: 2rem; font-weight: 600'>{risk_level}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    # Create predictions for each subsequence length
-                    st.markdown("### Prediction Evolution Over Time")
-                    st.markdown("This chart shows how the prediction changes as more data points are added:")
-                    
-                    hours = seq_df['Hour'].values
-                    predictions_over_time = []
-                    
-                    # Try to make predictions with increasing sequence lengths
-                    try:
-                        # Get predictions for the entire sequence using the model's predict_sequence method
-                        _, all_probabilities = model.predict_sequence(X_sequence)
-                        
-                        # Each probability at index i corresponds to the prediction after seeing i+1 timesteps
-                        predictions_over_time = all_probabilities.tolist()
-                    except Exception as e:
-                        # If prediction fails, create simulated predictions
-                        st.error(f"Error generating sequential predictions: {str(e)}")
-                        predictions_over_time = [mean_prob * (i/len(seq_df)) for i in range(1, len(seq_df) + 1)]
-                    
-                    # Create the visualization
-                    fig = go.Figure()
-                    
-                    # Add the prediction line
-                    fig.add_trace(go.Scatter(
-                        x=hours[:len(predictions_over_time)],
-                        y=predictions_over_time,
-                        mode='lines+markers',
-                        name='Sepsis Risk',
-                        line=dict(color='red', width=3),
-                        marker=dict(size=8)
-                    ))
-                    
-                    # Add threshold lines
-                    fig.add_shape(
-                        type="line",
-                        x0=hours[0],
-                        y0=0.64,
-                        x1=hours[-1],
-                        y1=0.64,
-                        line=dict(color="red", width=2, dash="dash"),
-                        name="High Risk"
-                    )
-                    
-                    fig.add_shape(
-                        type="line",
-                        x0=hours[0],
-                        y0=0.44,
-                        x1=hours[-1],
-                        y1=0.44,
-                        line=dict(color="orange", width=2, dash="dash"),
-                        name="Sepsis Threshold"
-                    )
-                    
-                    fig.add_shape(
-                        type="line",
-                        x0=hours[0],
-                        y0=0.24,
-                        x1=hours[-1],
-                        y1=0.24,
-                        line=dict(color="green", width=2, dash="dash"),
-                        name="Low Risk"
-                    )
-                    
-                    # Add annotations for thresholds
-                    fig.add_annotation(
-                        x=hours[-1],
-                        y=0.64,
-                        text="High Risk",
-                        showarrow=False,
-                        xshift=10,
-                        font=dict(color="red")
-                    )
-                    
-                    fig.add_annotation(
-                        x=hours[-1],
-                        y=0.44,
-                        text="Sepsis Threshold",
-                        showarrow=False,
-                        xshift=10,
-                        font=dict(color="orange")
-                    )
-                    
-                    fig.add_annotation(
-                        x=hours[-1],
-                        y=0.24,
-                        text="Low Risk",
-                        showarrow=False,
-                        xshift=10,
-                        font=dict(color="green")
-                    )
-                    
-                    # Update layout
-                    fig.update_layout(
-                        title="Sepsis Risk Prediction with Increasing Data Points",
-                        xaxis_title="Hour",
-                        yaxis_title="Sepsis Risk Probability",
-                        yaxis=dict(range=[0, 1]),
-                        height=400,
-                        plot_bgcolor='white'
-                    )
-                    
-        st.plotly_chart(fig, use_container_width=True)
-
-        st.markdown("### Clinical Recommendation")
-        
-            # Display recommendation based on prediction probability
-            if model_type == "Random Forest":
-                # Random Forest recommendation with consensus
-        if mean_prob >= CONFIG['THRESHOLD_SEPSIS']:
-            if consensus_pct >= 70:
-                st.error("🚨 **HIGH PRIORITY**: Strong consensus for sepsis risk. Immediate clinical evaluation and intervention recommended.")
-                col1, col2, col3 = st.columns([2,3,2])
-                with col2:
-                            # Load the image from the assets/priority folder
-                            try:
-                    st.image("assets/priority/5.png", use_container_width=True)
-                            except Exception as e:
-                                st.error(f"Could not load priority image: {e}")
-            else:
-                st.warning("⚠️ **MODERATE PRIORITY**: Sepsis risk detected with some uncertainty. Close monitoring and clinical assessment advised.")
-                col1, col2, col3 = st.columns([2,3,2])
-                with col2:
-                            try:
-                    st.image("assets/priority/4.png", use_container_width=True)
-                            except Exception as e:
-                                st.error(f"Could not load priority image: {e}")
-        elif mean_prob <= CONFIG['THRESHOLD_NO_SEPSIS']:
-            if consensus_pct >= 70:
-                st.success("✅ **LOW PRIORITY**: Strong consensus for low sepsis risk. Continue routine monitoring per protocol.")
-                col1, col2, col3 = st.columns([2,3,2])
-                with col2:
-                            try:
-                    st.image("assets/priority/1.png", use_container_width=True)
-                            except Exception as e:
-                                st.error(f"Could not load priority image: {e}")
-            else:
-                st.info("ℹ️ **ROUTINE MONITORING**: Low sepsis risk indicated but maintain standard care vigilance.")
-                col1, col2, col3 = st.columns([2,3,2])
-                with col2:
-                            try:
-                    st.image("assets/priority/2.png", use_container_width=True)
-                            except Exception as e:
-                                st.error(f"Could not load priority image: {e}")
-        else:
-            st.warning(f"🤔 **UNCERTAIN PREDICTION**: Model is uncertain (Sepsis: {mean_prob:.1%}). Consider additional clinical assessment, laboratory tests, and expert consultation. Monitor closely for clinical deterioration.")
-            col1, col2, col3 = st.columns([2,3,2])
+            # Show summary statistics in Streamlit
+            col1, col2, col3, col4, col5 = st.columns(5)
+            with col1:
+                st.metric("Mean Score", f"{np.mean(tree_scores):.3f}")
             with col2:
-                        try:
-                st.image("assets/priority/3.png", use_container_width=True)
-                        except Exception as e:
-                            st.error(f"Could not load priority image: {e}")
-            else:
-                # GRU model recommendation without consensus
-                if mean_prob >= 0.64:
-                    st.error("🚨 **HIGH PRIORITY**: High sepsis risk detected from temporal patterns. Immediate clinical evaluation and intervention recommended.")
+                st.markdown(f"""
+                <div style='text-align: center'>
+                    <p style='margin-bottom: 0px; color: gray; font-size: 14px'>Trees for Sepsis</p>
+                    <p style='margin: 0; color: #f44336; font-size: 2rem; font-weight: 600'>{sepsis_votes}</p>
+                </div>
+                """, unsafe_allow_html=True)
+            with col3:
+                st.markdown(f"""
+                <div style='text-align: center'>
+                    <p style='margin-bottom: 0px; color: gray; font-size: 14px'>Trees for No Sepsis</p>
+                    <p style='margin: 0; color: #4caf50; font-size: 2rem; font-weight: 600'>{no_sepsis_votes}</p>
+                </div>
+                """, unsafe_allow_html=True)
+            with col4:
+                st.markdown(f"""
+                <div style='text-align: center'>
+                    <p style='margin-bottom: 0px; color: gray; font-size: 14px'>Uncertain Trees</p>
+                    <p style='margin: 0; color: #ff9800; font-size: 2rem; font-weight: 600'>{uncertain_votes}</p>
+                </div>
+                """, unsafe_allow_html=True)
+            with col5:
+                st.markdown(f"""
+                <div style='text-align: center'>
+                    <p style='margin-bottom: 0px; color: gray; font-size: 14px'>Consensus</p>
+                    <p style='margin: 0; font-size: 2rem; font-weight: 600'>{consensus_pct:.1f}%</p>
+                </div>
+                """, unsafe_allow_html=True)
+
+            # Create and show advisory board visualization
+            fig, _, _, _ = create_advisory_board_visualization(tree_scores, tree_scores)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            # GRU model visualization
+            st.markdown('<h3 class="sub-header">🧠 GRU Temporal Prediction</h3>', unsafe_allow_html=True)
+            
+            # Create a temporal visualization of the sequence and prediction
+            if 'sequence_data' in st.session_state and st.session_state.sequence_data:
+                seq_df = pd.DataFrame(st.session_state.sequence_data)
+                
+                # Show sequence statistics
+                st.markdown("### Prediction Results")
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Sequence Length", f"{len(seq_df)} hours")
+                with col2:
+                    st.metric("Sepsis Risk", f"{mean_prob:.1%}")
+                with col3:
+                    risk_level = "High" if mean_prob >= 0.64 else "Medium" if mean_prob >= 0.24 else "Low"
+                    risk_color = "red" if risk_level == "High" else "orange" if risk_level == "Medium" else "green"
+                    st.markdown(f"""
+                    <div style='text-align: center'>
+                        <p style='margin-bottom: 0px; color: gray; font-size: 14px'>Risk Level</p>
+                        <p style='margin: 0; color: {risk_color}; font-size: 2rem; font-weight: 600'>{risk_level}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # Create predictions for each subsequence length
+                st.markdown("### Prediction Evolution Over Time")
+                st.markdown("This chart shows how the prediction changes as more data points are added:")
+                
+                hours = seq_df['Hour'].values
+                predictions_over_time = []
+                
+                # Try to make predictions with increasing sequence lengths
+                try:
+                    # Get predictions for the entire sequence using the model's predict_sequence method
+                    _, all_probabilities = model.predict_sequence(X_sequence)
+                    
+                    # Each probability at index i corresponds to the prediction after seeing i+1 timesteps
+                    predictions_over_time = all_probabilities.tolist()
+                except Exception as e:
+                    # If prediction fails, create simulated predictions
+                    st.error(f"Error generating sequential predictions: {str(e)}")
+                    predictions_over_time = [mean_prob * (i/len(seq_df)) for i in range(1, len(seq_df) + 1)]
+                
+                # Create the visualization
+                fig = go.Figure()
+                
+                # Add the prediction line
+                fig.add_trace(go.Scatter(
+                    x=hours[:len(predictions_over_time)],
+                    y=predictions_over_time,
+                    mode='lines+markers',
+                    name='Sepsis Risk',
+                    line=dict(color='red', width=3),
+                    marker=dict(size=8)
+                ))
+                
+                # Add threshold lines
+                fig.add_shape(
+                    type="line",
+                    x0=hours[0],
+                    y0=0.64,
+                    x1=hours[-1],
+                    y1=0.64,
+                    line=dict(color="red", width=2, dash="dash"),
+                    name="High Risk"
+                )
+                
+                fig.add_shape(
+                    type="line",
+                    x0=hours[0],
+                    y0=0.44,
+                    x1=hours[-1],
+                    y1=0.44,
+                    line=dict(color="orange", width=2, dash="dash"),
+                    name="Sepsis Threshold"
+                )
+                
+                fig.add_shape(
+                    type="line",
+                    x0=hours[0],
+                    y0=0.24,
+                    x1=hours[-1],
+                    y1=0.24,
+                    line=dict(color="green", width=2, dash="dash"),
+                    name="Low Risk"
+                )
+                
+                # Add annotations for thresholds
+                fig.add_annotation(
+                    x=hours[-1],
+                    y=0.64,
+                    text="High Risk",
+                    showarrow=False,
+                    xshift=10,
+                    font=dict(color="red")
+                )
+                
+                fig.add_annotation(
+                    x=hours[-1],
+                    y=0.44,
+                    text="Sepsis Threshold",
+                    showarrow=False,
+                    xshift=10,
+                    font=dict(color="orange")
+                )
+                
+                fig.add_annotation(
+                    x=hours[-1],
+                    y=0.24,
+                    text="Low Risk",
+                    showarrow=False,
+                    xshift=10,
+                    font=dict(color="green")
+                )
+                
+                # Update layout
+                fig.update_layout(
+                    title="Sepsis Risk Prediction with Increasing Data Points",
+                    xaxis_title="Hour",
+                    yaxis_title="Sepsis Risk Probability",
+                    yaxis=dict(range=[0, 1]),
+                    height=400,
+                    plot_bgcolor='white'
+                )
+                        
+            st.plotly_chart(fig, use_container_width=True)
+
+            st.markdown("### Clinical Recommendation")
+            
+                # Display recommendation based on prediction probability
+        if model_type == "Random Forest":
+                    # Random Forest recommendation with consensus
+            if mean_prob >= CONFIG['THRESHOLD_SEPSIS']:
+                if consensus_pct >= 70:
+                    st.error("🚨 **HIGH PRIORITY**: Strong consensus for sepsis risk. Immediate clinical evaluation and intervention recommended.")
                     col1, col2, col3 = st.columns([2,3,2])
                     with col2:
+                                # Load the image from the assets/priority folder
                         try:
                             st.image("assets/priority/5.png", use_container_width=True)
                         except Exception as e:
                             st.error(f"Could not load priority image: {e}")
-                elif mean_prob >= 0.44:
-                    st.warning("⚠️ **MODERATE PRIORITY**: Sepsis risk detected from temporal patterns. Close monitoring and clinical assessment advised.")
+                else:
+                    st.warning("⚠️ **MODERATE PRIORITY**: Sepsis risk detected with some uncertainty. Close monitoring and clinical assessment advised.")
                     col1, col2, col3 = st.columns([2,3,2])
                     with col2:
                         try:
                             st.image("assets/priority/4.png", use_container_width=True)
                         except Exception as e:
                             st.error(f"Could not load priority image: {e}")
-                elif mean_prob >= 0.24:
-                    st.warning(f"🤔 **UNCERTAIN PREDICTION**: Model shows some risk patterns (Sepsis: {mean_prob:.1%}). Consider additional clinical assessment and monitoring.")
-                    col1, col2, col3 = st.columns([2,3,2])
-                    with col2:
-                        try:
-                            st.image("assets/priority/3.png", use_container_width=True)
-                        except Exception as e:
-                            st.error(f"Could not load priority image: {e}")
-                else:
-                    st.success("✅ **LOW PRIORITY**: Low sepsis risk based on temporal patterns. Continue routine monitoring per protocol.")
+            elif mean_prob <= CONFIG['THRESHOLD_NO_SEPSIS']:
+                if consensus_pct >= 70:
+                    st.success("✅ **LOW PRIORITY**: Strong consensus for low sepsis risk. Continue routine monitoring per protocol.")
                     col1, col2, col3 = st.columns([2,3,2])
                     with col2:
                         try:
                             st.image("assets/priority/1.png", use_container_width=True)
                         except Exception as e:
                             st.error(f"Could not load priority image: {e}")
-                
-                # Add sequence-specific recommendations
-                if len(seq_df) < 5:
-                    st.warning("⚠️ **Short Sequence Warning**: This prediction is based on a limited number of timepoints. Longer sequences provide more reliable predictions.")
-                elif 'SepsisLabel' in seq_df.columns and seq_df['SepsisLabel'].sum() > 0:
-                    st.error("🚨 **Alert**: This patient has already shown sepsis indicators in the sequence data.")
+                else:
+                    st.info("ℹ️ **ROUTINE MONITORING**: Low sepsis risk indicated but maintain standard care vigilance.")
+                    col1, col2, col3 = st.columns([2,3,2])
+                    with col2:
+                        try:
+                            st.image("assets/priority/2.png", use_container_width=True)
+                        except Exception as e:
+                            st.error(f"Could not load priority image: {e}")
+            else:
+                st.warning(f"🤔 **UNCERTAIN PREDICTION**: Model is uncertain (Sepsis: {mean_prob:.1%}). Consider additional clinical assessment, laboratory tests, and expert consultation. Monitor closely for clinical deterioration.")
+                col1, col2, col3 = st.columns([2,3,2])
+                with col2:
+                    try:
+                        st.image("assets/priority/3.png", use_container_width=True)
+                    except Exception as e:
+                        st.error(f"Could not load priority image: {e}")
+        else:
+            # GRU model recommendation without consensus
+            if mean_prob >= 0.64:
+                st.error("🚨 **HIGH PRIORITY**: High sepsis risk detected from temporal patterns. Immediate clinical evaluation and intervention recommended.")
+                col1, col2, col3 = st.columns([2,3,2])
+                with col2:
+                    try:
+                        st.image("assets/priority/5.png", use_container_width=True)
+                    except Exception as e:
+                        st.error(f"Could not load priority image: {e}")
+            elif mean_prob >= 0.44:
+                st.warning("⚠️ **MODERATE PRIORITY**: Sepsis risk detected from temporal patterns. Close monitoring and clinical assessment advised.")
+                col1, col2, col3 = st.columns([2,3,2])
+                with col2:
+                    try:
+                        st.image("assets/priority/4.png", use_container_width=True)
+                    except Exception as e:
+                        st.error(f"Could not load priority image: {e}")
+            elif mean_prob >= 0.24:
+                st.warning(f"🤔 **UNCERTAIN PREDICTION**: Model shows some risk patterns (Sepsis: {mean_prob:.1%}). Consider additional clinical assessment and monitoring.")
+                col1, col2, col3 = st.columns([2,3,2])
+                with col2:
+                    try:
+                        st.image("assets/priority/3.png", use_container_width=True)
+                    except Exception as e:
+                        st.error(f"Could not load priority image: {e}")
+            else:
+                st.success("✅ **LOW PRIORITY**: Low sepsis risk based on temporal patterns. Continue routine monitoring per protocol.")
+                col1, col2, col3 = st.columns([2,3,2])
+                with col2:
+                    try:
+                        st.image("assets/priority/1.png", use_container_width=True)
+                    except Exception as e:
+                        st.error(f"Could not load priority image: {e}")
+            
+            # Add sequence-specific recommendations
+            if len(seq_df) < 5:
+                st.warning("⚠️ **Short Sequence Warning**: This prediction is based on a limited number of timepoints. Longer sequences provide more reliable predictions.")
+            elif 'SepsisLabel' in seq_df.columns and seq_df['SepsisLabel'].sum() > 0:
+                st.error("🚨 **Alert**: This patient has already shown sepsis indicators in the sequence data.")
