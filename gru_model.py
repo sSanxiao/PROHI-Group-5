@@ -129,14 +129,16 @@ class GRUSequenceModel:
         df = pd.read_csv(data_path)
         print("\nAll columns:", df.columns)
         
-        # Define columns to drop
-        columns_drop = {
-            'Unnamed: 0', 'Unit1', 'Unit2'
-        }
+        # Define columns to keep (same as in tree_voting_model.py)
+        columns_to_keep = [
+            'Hour', 'HR', 'O2Sat', 'Temp', 'SBP', 'MAP', 'Resp', 'HCO3', 'pH', 'PaCO2', 
+            'Creatinine', 'Bilirubin_direct', 'WBC', 'Platelets', 'ICULOS', 'Age', 'Gender',
+            'Patient_ID', 'SepsisLabel'  # Always keep these
+        ]
         
-        # Drop specified columns
-        df = df.drop(columns=[col for col in columns_drop if col in df.columns])
-        print("\nDropped columns:", columns_drop)
+        # Keep only specified columns
+        df = df[columns_to_keep]
+        print("\nKept columns:", columns_to_keep)
         
         # Get features (all columns except Patient_ID and SepsisLabel)
         self.features = [col for col in df.columns if col not in ['Patient_ID', 'SepsisLabel']]

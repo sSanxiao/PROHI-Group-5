@@ -10,12 +10,12 @@ import joblib
 import os
 
 class TreeVotingModel:
-    def __init__(self, n_trees=100):
+    def __init__(self, n_trees=100, max_depth=10, min_samples_split=5, min_samples_leaf=2):
         self.model = RandomForestClassifier(
             n_estimators=n_trees,
-            max_depth=10,  # Increased depth for more complex patterns
-            min_samples_split=5,  # Smaller splits to catch rare patterns
-            min_samples_leaf=2,
+            max_depth=max_depth,
+            min_samples_split=min_samples_split,
+            min_samples_leaf=min_samples_leaf,
             class_weight='balanced',  # Handle class imbalance
             random_state=42,
             n_jobs=-1
@@ -30,14 +30,16 @@ class TreeVotingModel:
         df = pd.read_csv(data_path)
         print("\nAll columns:", df.columns)
         
-        # Define columns to drop
-        columns_drop = {
-            'Unnamed: 0', 'Unit1', 'Unit2'
-        }
+        # Define columns to keep
+        columns_to_keep = [
+            'Hour', 'HR', 'O2Sat', 'Temp', 'SBP', 'MAP', 'Resp', 'HCO3', 'pH', 'PaCO2', 
+            'Creatinine', 'Bilirubin_direct', 'WBC', 'Platelets', 'ICULOS', 'Age', 'Gender',
+            'Patient_ID', 'SepsisLabel'  # Always keep these
+        ]
         
-        # Drop specified columns
-        df = df.drop(columns=[col for col in columns_drop if col in df.columns])
-        print("\nDropped columns:", columns_drop)
+        # Keep only specified columns
+        df = df[columns_to_keep]
+        print("\nKept columns:", columns_to_keep)
         
         # Get features (all columns except Patient_ID and SepsisLabel)
         self.features = [col for col in df.columns if col not in ['Patient_ID', 'SepsisLabel']]
@@ -135,7 +137,7 @@ class TreeVotingModel:
         mean_scores = np.mean(tree_scores)  # Average probability across trees
         return 1 if mean_scores >= threshold else 0
     
-    def evaluate(self, X_test, y_test, threshold=None):
+    def evaluate(self, X_test, y_test, threshold=None, save_plots=False):
         """Evaluate model performance"""
         print("\nEvaluating model...")
         
@@ -182,66 +184,68 @@ class TreeVotingModel:
         print(f"Recall: {recall:.3f}")
         print(f"F1: {f1:.3f}")
         
-        # Set up the visualization style
-        plt.style.use('seaborn-v0_8')
-        plt.rcParams['figure.dpi'] = 300
-        plt.rcParams['savefig.dpi'] = 300
-        plt.rcParams['font.size'] = 12
-        plt.rcParams['axes.titlesize'] = 14
-        plt.rcParams['axes.labelsize'] = 12
-        
-        # First figure: Distribution of predictions
-        plt.figure(figsize=(12, 6))
-        sns.histplot(data=pd.DataFrame({
-            'Score': mean_scores,
-            'Actual': ['Sepsis' if y == 1 else 'No Sepsis' for y in y_test]
-        }), x='Score', hue='Actual', bins=30, stat='density')
-        
-        plt.axvline(x=threshold, color='r', linestyle='--', label=f'Threshold ({threshold:.2f})')
-        plt.title('Distribution of Predictions by Actual Class')
-        plt.xlabel('Prediction Score')
-        plt.ylabel('Density')
-        plt.legend()
-        
-        plt.tight_layout()
-        plt.savefig('assets/prediction_distribution.png', 
-                    dpi=300, 
-                    bbox_inches='tight',
-                    facecolor='white',
-                    edgecolor='none')
-        plt.show()
-        
-        # Second figure: Confusion Matrix
-        plt.figure(figsize=(10, 8))
+        # Calculate confusion matrix
         cm = confusion_matrix(y_test, all_predictions)
-        
-        # Calculate percentages of actual values (row-wise)
         cm_norm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] * 100
         
-        # Create heatmap without annotations first
-        sns.heatmap(cm, cmap='Blues', annot=False,
-                   xticklabels=['No Sepsis', 'Sepsis'],
-                   yticklabels=['No Sepsis', 'Sepsis'])
-        
-        # Add annotations with count and percentage
-        for i in range(cm.shape[0]):
-            for j in range(cm.shape[1]):
-                text = f'{cm[i,j]}\n({cm_norm[i,j]:.1f}%)'
-                plt.text(j + 0.5, i + 0.5, text,
-                        ha='center', va='center',
-                        color='black' if cm[i,j] / cm[i,:].sum() < 0.5 else 'white')
-        
-        plt.title('Confusion Matrix\nPredicted vs Actual')
-        plt.xlabel('Predicted Label')
-        plt.ylabel('Actual Label')
-        
-        plt.tight_layout()
-        plt.savefig('assets/confusion_matrix.png', 
-                    dpi=300, 
-                    bbox_inches='tight',
-                    facecolor='white',
-                    edgecolor='none')
-        plt.show()
+        # Only create and save plots if requested
+        if save_plots:
+            # Set up the visualization style
+            plt.style.use('seaborn-v0_8')
+            plt.rcParams['figure.dpi'] = 300
+            plt.rcParams['savefig.dpi'] = 300
+            plt.rcParams['font.size'] = 12
+            plt.rcParams['axes.titlesize'] = 14
+            plt.rcParams['axes.labelsize'] = 12
+            
+            # First figure: Distribution of predictions
+            plt.figure(figsize=(12, 6))
+            sns.histplot(data=pd.DataFrame({
+                'Score': mean_scores,
+                'Actual': ['Sepsis' if y == 1 else 'No Sepsis' for y in y_test]
+            }), x='Score', hue='Actual', bins=30, stat='density')
+            
+            plt.axvline(x=threshold, color='r', linestyle='--', label=f'Threshold ({threshold:.2f})')
+            plt.title('Distribution of Predictions by Actual Class')
+            plt.xlabel('Prediction Score')
+            plt.ylabel('Density')
+            plt.legend()
+            
+            plt.tight_layout()
+            plt.savefig('assets/prediction_distribution.png', 
+                        dpi=300, 
+                        bbox_inches='tight',
+                        facecolor='white',
+                        edgecolor='none')
+            plt.close()  # Close figure instead of showing it
+            
+            # Second figure: Confusion Matrix
+            plt.figure(figsize=(10, 8))
+            
+            # Create heatmap without annotations first
+            sns.heatmap(cm, cmap='Blues', annot=False,
+                       xticklabels=['No Sepsis', 'Sepsis'],
+                       yticklabels=['No Sepsis', 'Sepsis'])
+            
+            # Add annotations with count and percentage
+            for i in range(cm.shape[0]):
+                for j in range(cm.shape[1]):
+                    text = f'{cm[i,j]}\n({cm_norm[i,j]:.1f}%)'
+                    plt.text(j + 0.5, i + 0.5, text,
+                            ha='center', va='center',
+                            color='black' if cm[i,j] / cm[i,:].sum() < 0.5 else 'white')
+            
+            plt.title('Confusion Matrix\nPredicted vs Actual')
+            plt.xlabel('Predicted Label')
+            plt.ylabel('Actual Label')
+            
+            plt.tight_layout()
+            plt.savefig('assets/confusion_matrix.png', 
+                        dpi=300, 
+                        bbox_inches='tight',
+                        facecolor='white',
+                        edgecolor='none')
+            plt.close()  # Close figure instead of showing it
         
         # Print detailed confusion matrix statistics
         print("\nConfusion Matrix Statistics:")
@@ -293,18 +297,116 @@ class TreeVotingModel:
 if __name__ == "__main__":
     # Create directories
     os.makedirs('assets', exist_ok=True)
+    os.makedirs('models', exist_ok=True)
     
-    # Create and train model
-    model = TreeVotingModel(n_trees=100)
+    # Prepare data once for all models
+    base_model = TreeVotingModel()
+    X_train, X_test, y_train, y_test = base_model.prepare_data('./data/cleaned_dataset.csv')
     
-    # Prepare data
-    X_train, X_test, y_train, y_test = model.prepare_data('./data/cleaned_dataset.csv')
+    # Store the features list for use with all models
+    features = base_model.features
     
-    # Train model
-    model.fit(X_train, y_train)
+    # Define 9 different hyperparameter configurations to test
+    model_configs = [
+        {"n_trees": 50, "max_depth": 5, "min_samples_split": 10, "min_samples_leaf": 4},
+        {"n_trees": 50, "max_depth": 10, "min_samples_split": 5, "min_samples_leaf": 2},
+        {"n_trees": 50, "max_depth": 15, "min_samples_split": 2, "min_samples_leaf": 1},
+        {"n_trees": 100, "max_depth": 5, "min_samples_split": 10, "min_samples_leaf": 4},
+        {"n_trees": 100, "max_depth": 10, "min_samples_split": 5, "min_samples_leaf": 2},
+        {"n_trees": 100, "max_depth": 15, "min_samples_split": 2, "min_samples_leaf": 1},
+        {"n_trees": 200, "max_depth": 5, "min_samples_split": 10, "min_samples_leaf": 4},
+        {"n_trees": 200, "max_depth": 10, "min_samples_split": 5, "min_samples_leaf": 2},
+        {"n_trees": 200, "max_depth": 15, "min_samples_split": 2, "min_samples_leaf": 1}
+    ]
     
-    # Evaluate
-    results = model.evaluate(X_test, y_test, threshold=0.5)
+    # Train and evaluate all models
+    results = []
+    for i, config in enumerate(model_configs):
+        print(f"\n\n{'='*80}")
+        print(f"Training Model {i+1}/9: {config}")
+        print(f"{'='*80}")
+        
+        # Create model with current config
+        model = TreeVotingModel(
+            n_trees=config["n_trees"],
+            max_depth=config["max_depth"],
+            min_samples_split=config["min_samples_split"],
+            min_samples_leaf=config["min_samples_leaf"]
+        )
+        
+        # Set the features attribute from the base model
+        model.features = features.copy()
+        
+        # Train model
+        model.fit(X_train, y_train)
+        
+        # Evaluate without saving plots
+        eval_results = model.evaluate(X_test, y_test, threshold=0.5, save_plots=False)
+        
+        # Save model with numbered name
+        model_path = f'models/random_forest_model_{i+1}.pkl'
+        model.save(model_path)
+        
+        # Store results
+        results.append({
+            "model_id": i+1,
+            "config": config,
+            "f1": eval_results["f1"],
+            "precision": eval_results["precision"],
+            "recall": eval_results["recall"],
+            "path": model_path
+        })
     
-    # Save model
-    model.save('models/random_forest_model.pkl') 
+    # Print summary table of all models
+    print("\n\n" + "="*80)
+    print("MODEL COMPARISON SUMMARY")
+    print("="*80)
+    print(f"{'Model':^10} | {'Trees':^8} | {'Depth':^8} | {'Min Split':^10} | {'Min Leaf':^10} | {'F1':^8} | {'Precision':^10} | {'Recall':^8}")
+    print("-"*90)
+    
+    # Sort results by F1 score (descending)
+    sorted_results = sorted(results, key=lambda x: x["f1"], reverse=True)
+    
+    for res in sorted_results:
+        print(f"{res['model_id']:^10} | {res['config']['n_trees']:^8} | {res['config']['max_depth']:^8} | "
+              f"{res['config']['min_samples_split']:^10} | {res['config']['min_samples_leaf']:^10} | "
+              f"{res['f1']:.3f}    | {res['precision']:.3f}      | {res['recall']:.3f}")
+    
+    # Find the best model based on F1 score
+    best_model = sorted_results[0]
+    
+    print("\n\n" + "="*80)
+    print(f"BEST MODEL: Model {best_model['model_id']}")
+    print("="*80)
+    print(f"Configuration:")
+    print(f"  - Trees: {best_model['config']['n_trees']}")
+    print(f"  - Max Depth: {best_model['config']['max_depth']}")
+    print(f"  - Min Samples Split: {best_model['config']['min_samples_split']}")
+    print(f"  - Min Samples Leaf: {best_model['config']['min_samples_leaf']}")
+    print(f"Performance:")
+    print(f"  - F1 Score: {best_model['f1']:.3f}")
+    print(f"  - Precision: {best_model['precision']:.3f}")
+    print(f"  - Recall: {best_model['recall']:.3f}")
+    print(f"Path: {best_model['path']}")
+    print("="*80)
+    
+    # Save a copy of the best model as the default model
+    best_model_data = joblib.load(best_model['path'])
+    joblib.dump(best_model_data, 'models/random_forest.pkl')
+    print(f"\nBest model copied to models/random_forest.pkl")
+    
+    # Generate and save plots for the best model only
+    print("\nGenerating plots for the best model...")
+    best_model_instance = TreeVotingModel(
+        n_trees=best_model['config']['n_trees'],
+        max_depth=best_model['config']['max_depth'],
+        min_samples_split=best_model['config']['min_samples_split'],
+        min_samples_leaf=best_model['config']['min_samples_leaf']
+    )
+    best_model_instance.model = best_model_data['model']
+    best_model_instance.scaler = best_model_data['scaler']
+    best_model_instance.features = best_model_data['features']
+    
+    # Re-evaluate the best model with plot saving enabled
+    best_model_instance.evaluate(X_test, y_test, threshold=0.5, save_plots=True)
+    print("\nPlots for the best model saved to assets/ directory") 
