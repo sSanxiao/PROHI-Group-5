@@ -167,4 +167,5 @@ cython_debug/
 data/Dataset.csv
 data/cleaned_dataset.csv
 models/
+!models/random_forest.pkl
 data/prepared_gru_data_sliding.pkl
