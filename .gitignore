@@ -166,6 +166,8 @@ cython_debug/
 # Dataset files
 data/Dataset.csv
 data/cleaned_dataset.csv
-models/
+# Ignore all files in the models directory
+models/*
+# But track these specific files
 !models/random_forest.pkl
 data/prepared_gru_data_sliding.pkl
