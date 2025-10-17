@@ -68,7 +68,13 @@ def about_page():
     
     st.subheader("Contact Information")
     st.markdown("""
-    For questions, feedback, or support, please contact any of our team members.
+    For questions, feedback, or support, please contact any of our team members:
+    
+    - **Xue Wu**: wu.xue@stud.ki.se
+    - **Khachatur Dallakyan**: khachatur.dallakyan@stud.ki.se
+    - **Qilu Wang**: qilu.wang@stud.ki.se
+    - **Pratibha Rustogi**: rustogi.pratibha@gmail.com
+    - **Max Altez Linhardt**: Altez.power@gmail.com
     
     **Project Repository**: [GitHub - PROHI-Group-5](https://github.com/sSanxiao/PROHI-Group-5)
     """)
