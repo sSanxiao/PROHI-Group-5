@@ -1144,7 +1144,7 @@ def predictive_analytics():
                     next_hour = int(seq_df['Hour'].max() + 1)
             
             new_timepoint['Hour'] = form_cols[0].number_input(
-                "Hour",
+                FEATURE_DISPLAY_NAMES.get('Hour', 'Hour'),
                 min_value=0,
                 max_value=240,
                 value=next_hour,
@@ -1168,13 +1168,13 @@ def predictive_analytics():
                 # Special handling for Gender
                 if feature == 'Gender':
                     new_timepoint[feature] = form_cols[col_idx % 3].selectbox(
-                        feature,
+                        FEATURE_DISPLAY_NAMES.get(feature, feature),
                         options=[0, 1],
                         format_func=lambda x: "Female" if x == 0 else "Male"
                     )
                 else:
                     new_timepoint[feature] = form_cols[col_idx % 3].number_input(
-                        feature,
+                        FEATURE_DISPLAY_NAMES.get(feature, feature),
                         min_value=float(min_val),
                         max_value=float(max_val),
                         value=float(default_val),
