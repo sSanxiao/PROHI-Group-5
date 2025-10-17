@@ -23,14 +23,13 @@ SAMPLE_PATIENTS = None
 RF_MODEL = None
 RF_SCALER = None
 
-# Feature columns - these are the only features we'll use
+# Feature columns - these are the only features we'll use (original names for data processing)
 FEATURE_COLUMNS = [
-    'Hour', 'HR (bpm)', 'O2Sat (%)', 'Temp (°C)', 'SBP (mm Hg)', 'MAP (mm Hg)', 'Resp (breaths/min)', 
-    'HCO3 (mmol/L)', 'pH', 'PaCO2 (mm Hg)', 'Creatinine (mg/dL)', 'Bilirubin_direct (mg/dL)', 
-    'WBC (count×10³/µL)', 'Platelets (count×10³/µL)', 'ICULOS (hours)', 'Age (years)', 'Gender'
+    'Hour', 'HR', 'O2Sat', 'Temp', 'SBP', 'MAP', 'Resp', 'HCO3', 'pH', 'PaCO2', 
+    'Creatinine', 'Bilirubin_direct', 'WBC', 'Platelets', 'ICULOS', 'Age', 'Gender'
 ]
 
-# Normal ranges for features
+# Normal ranges for features (using original names without units for keys)
 NORMAL_RANGES = {
     'HR': (60, 100), 'O2Sat': (95, 100), 'Temp': (36.1, 37.2), 'SBP': (90, 140),
     'MAP': (70, 100), 'Resp': (12, 20), 'HCO3': (22, 26), 'pH': (7.35, 7.45),
@@ -39,12 +38,33 @@ NORMAL_RANGES = {
     'Hour': (0, 23), 'ICULOS': (0, 240)
 }
 
-# Feature categories for UI organization
+# Feature categories for UI organization (using original names without units for matching)
 FEATURE_CATEGORIES = {
     "Vital Signs": ['HR', 'O2Sat', 'Temp', 'SBP', 'MAP', 'Resp'],
     "Blood Gas": ['HCO3', 'pH', 'PaCO2'],
     "Labs": ['Creatinine', 'Bilirubin_direct', 'WBC', 'Platelets'],
     "Patient Info": ['Age', 'Gender', 'Hour', 'ICULOS']
+}
+
+# Feature display names with units
+FEATURE_DISPLAY_NAMES = {
+    'HR': 'HR (bpm)',
+    'O2Sat': 'O2Sat (%)',
+    'Temp': 'Temp (°C)',
+    'SBP': 'SBP (mm Hg)',
+    'MAP': 'MAP (mm Hg)',
+    'Resp': 'Resp (breaths/min)',
+    'HCO3': 'HCO3 (mmol/L)',
+    'pH': 'pH',
+    'PaCO2': 'PaCO2 (mm Hg)',
+    'Creatinine': 'Creatinine (mg/dL)',
+    'Bilirubin_direct': 'Bilirubin_direct (mg/dL)',
+    'WBC': 'WBC (count×10³/µL)',
+    'Platelets': 'Platelets (count×10³/µL)',
+    'ICULOS': 'ICULOS (Intensive Care Unit Length of Stay in hours)',
+    'Age': 'Age (years)',
+    'Gender': 'Gender',
+    'Hour': 'Hour'
 }
 
 # GRU Model Definition
@@ -796,7 +816,7 @@ def predictive_analytics():
                     if feature == 'Gender':
                         default_gender = int(st.session_state.get(feature, 0))  # Ensure integer
                         value = st.selectbox(
-                            f"{feature}", 
+                            FEATURE_DISPLAY_NAMES.get(feature, feature), 
                             options=[0, 1], 
                             index=default_gender if default_gender in [0, 1] else 0,
                             format_func=lambda x: "Female" if x == 0 else "Male",
@@ -806,7 +826,7 @@ def predictive_analytics():
                     elif feature == 'Hour':
                         default_hour = int(st.session_state.get(feature, 0))  # Ensure integer
                         value = st.selectbox(
-                            f"{feature}", 
+                            FEATURE_DISPLAY_NAMES.get(feature, feature), 
                             options=list(range(24)), 
                             index=default_hour if 0 <= default_hour < 24 else 0,
                             key=session_key,
@@ -815,7 +835,7 @@ def predictive_analytics():
                     elif feature == 'ICULOS':
                         default_iculos = int(st.session_state.get(feature, 0))  # Ensure integer
                         value = st.number_input(
-                            f"ICULOS (Intensive Care Unit Length of Stay)", 
+                            FEATURE_DISPLAY_NAMES.get(feature, feature), 
                             min_value=0,
                             max_value=1000,
                             value=default_iculos if 0 <= default_iculos <= 1000 else 0,
@@ -847,7 +867,7 @@ def predictive_analytics():
                             step = 0.1  # Decimal values
                         
                         value = st.number_input(
-                            f"{feature}", 
+                            FEATURE_DISPLAY_NAMES.get(feature, feature), 
                             min_value=float(min_val), 
                             max_value=float(max_val),
                             value=float(current_val),
