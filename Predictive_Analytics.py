@@ -25,8 +25,9 @@ RF_SCALER = None
 
 # Feature columns - these are the only features we'll use
 FEATURE_COLUMNS = [
-    'Hour', 'HR', 'O2Sat', 'Temp', 'SBP', 'MAP', 'Resp', 'HCO3', 'pH', 'PaCO2', 
-    'Creatinine', 'Bilirubin_direct', 'WBC', 'Platelets', 'ICULOS', 'Age', 'Gender'
+    'Hour', 'HR (bpm)', 'O2Sat (%)', 'Temp (°C)', 'SBP (mm Hg)', 'MAP (mm Hg)', 'Resp (breaths/min)', 
+    'HCO3 (mmol/L)', 'pH', 'PaCO2 (mm Hg)', 'Creatinine (mg/dL)', 'Bilirubin_direct (mg/dL)', 
+    'WBC (count×10³/µL)', 'Platelets (count×10³/µL)', 'ICULOS (hours)', 'Age (years)', 'Gender'
 ]
 
 # Normal ranges for features
@@ -814,7 +815,7 @@ def predictive_analytics():
                     elif feature == 'ICULOS':
                         default_iculos = int(st.session_state.get(feature, 0))  # Ensure integer
                         value = st.number_input(
-                            f"{feature}", 
+                            f"ICULOS (Intensive Care Unit Length of Stay)", 
                             min_value=0,
                             max_value=1000,
                             value=default_iculos if 0 <= default_iculos <= 1000 else 0,
@@ -941,7 +942,7 @@ def predictive_analytics():
                 st.plotly_chart(fig, use_container_width=True)
                 
                 # Add distribution plot of tree predictions
-                st.markdown('<h3 class="sub-header">🏛️ Random Forest Advisory Board Decision</h3>', unsafe_allow_html=True)
+                st.markdown('<h3 class="sub-header">🏛️ Virtual Doctors Advisory Board Decision</h3>', unsafe_allow_html=True)
                 fig_dist = create_tree_distribution_plot(tree_scores, CONFIG['THRESHOLD_SEPSIS'], CONFIG['THRESHOLD_NO_SEPSIS'])
                 st.plotly_chart(fig_dist, use_container_width=True)
         
@@ -960,21 +961,21 @@ def predictive_analytics():
                 with col2:
                     st.markdown(f"""
                     <div style='text-align: center'>
-                        <p style='margin-bottom: 0px; color: gray; font-size: 14px'>Trees for Sepsis</p>
+                        <p style='margin-bottom: 0px; color: gray; font-size: 14px'>Virtual Doctors Predicting Sepsis</p>
                         <p style='margin: 0; color: #f44336; font-size: 2rem; font-weight: 600'>{sepsis_votes}</p>
                     </div>
                     """, unsafe_allow_html=True)
                 with col3:
                     st.markdown(f"""
                     <div style='text-align: center'>
-                        <p style='margin-bottom: 0px; color: gray; font-size: 14px'>Trees for No Sepsis</p>
+                        <p style='margin-bottom: 0px; color: gray; font-size: 14px'>Virtual Doctors Predicting No Sepsis</p>
                         <p style='margin: 0; color: #4caf50; font-size: 2rem; font-weight: 600'>{no_sepsis_votes}</p>
                     </div>
                     """, unsafe_allow_html=True)
                 with col4:
                     st.markdown(f"""
                     <div style='text-align: center'>
-                        <p style='margin-bottom: 0px; color: gray; font-size: 14px'>Uncertain Trees</p>
+                        <p style='margin-bottom: 0px; color: gray; font-size: 14px'>Uncertain Virtual Doctors</p>
                         <p style='margin: 0; color: #ff9800; font-size: 2rem; font-weight: 600'>{uncertain_votes}</p>
                     </div>
                     """, unsafe_allow_html=True)

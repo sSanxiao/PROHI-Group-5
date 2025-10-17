@@ -761,7 +761,6 @@ def prescriptive_analytics():
         
         **What are SHAP values?**
         - SHAP (SHapley Additive exPlanations) values explain the contribution of each feature to a prediction
-        - They are based on game theory and provide a unified measure of feature importance
         
         **Key concepts:**
         - **Base value**: The average model prediction across all training data

@@ -7,22 +7,49 @@ from scipy import stats
 from sklearn.preprocessing import StandardScaler
 
 def get_minimal_sample(df, sample_size=3000, random_seed=69):
-    """Get a small stratified sample for quick analysis"""
-    if 'SepsisLabel' not in df.columns:
+    """Get a small stratified sample based on patient averages for quick analysis"""
+    if 'SepsisLabel' not in df.columns or 'Patient_ID' not in df.columns:
         return df.sample(n=min(sample_size, len(df)), random_state=random_seed)
     
-    df_clean = df.dropna(subset=['SepsisLabel'])
-    sepsis = df_clean[df_clean['SepsisLabel'] == 1]
-    non_sepsis = df_clean[df_clean['SepsisLabel'] == 0]
+    # Convert SepsisLabel to numeric to avoid categorical issues
+    df_numeric = df.copy()
+    df_numeric['SepsisLabel'] = pd.to_numeric(df_numeric['SepsisLabel'], errors='coerce')
+    
+    # Calculate patient-level averages
+    patient_averages = df_numeric.groupby('Patient_ID').agg({
+        'SepsisLabel': 'max',  # Use max to get sepsis status (1 if any record has sepsis)
+        'HR': 'mean',
+        'O2Sat': 'mean', 
+        'Temp': 'mean',
+        'SBP': 'mean',
+        'MAP': 'mean',
+        'Resp': 'mean',
+        'HCO3': 'mean',
+        'pH': 'mean',
+        'PaCO2': 'mean',
+        'Creatinine': 'mean',
+        'Bilirubin_direct': 'mean',
+        'WBC': 'mean',
+        'Platelets': 'mean',
+        'ICULOS': 'mean',
+        'Age': 'mean',
+        'Gender': 'mean',
+        'Hour': 'mean'
+    }).reset_index()
+    
+    # Clean the data
+    patient_averages = patient_averages.dropna(subset=['SepsisLabel'])
+    sepsis_patients = patient_averages[patient_averages['SepsisLabel'] == 1]
+    non_sepsis_patients = patient_averages[patient_averages['SepsisLabel'] == 0]
     
     # Calculate sizes maintaining ratio but with minimum representation
-    ratio = len(sepsis) / len(df_clean)
-    sepsis_size = max(500, min(int(sample_size * ratio), len(sepsis)))
-    non_sepsis_size = min(sample_size - sepsis_size, len(non_sepsis))
+    ratio = len(sepsis_patients) / len(patient_averages)
+    sepsis_size = max(100, min(int(sample_size * ratio), len(sepsis_patients)))
+    non_sepsis_size = min(sample_size - sepsis_size, len(non_sepsis_patients))
     
-    # Sample and combine
-    sepsis_sample = sepsis.sample(n=sepsis_size, random_state=random_seed)
-    non_sepsis_sample = non_sepsis.sample(n=non_sepsis_size, random_state=random_seed)
+    # Sample patients and combine
+    sepsis_sample = sepsis_patients.sample(n=sepsis_size, random_state=random_seed)
+    non_sepsis_sample = non_sepsis_patients.sample(n=non_sepsis_size, random_state=random_seed)
     
     return pd.concat([sepsis_sample, non_sepsis_sample]).sample(frac=1, random_state=random_seed)
 
@@ -188,15 +215,17 @@ def diagnostic_analytics():
     # Add refresh sample button in a small column
     col1, col2 = st.columns([4, 1])
     with col1:
-        st.info(f"Using a sample of 3,000 records from {len(full_df):,} total records for quick analysis while maintaining the sepsis/non-sepsis ratio.")
+        # Calculate unique patients for the info message
+        unique_patients = full_df['Patient_ID'].nunique() if 'Patient_ID' in full_df.columns else len(full_df)
+        st.info(f"Using patient averages from a sample of 3,000 patients out of {unique_patients:,} unique patients for quick analysis while maintaining the sepsis/non-sepsis ratio.")
     with col2:
         if st.button("🔄 New Sample"):
             st.session_state.random_seed = np.random.randint(0, 10000)
             st.rerun()
     
-    # Get a small sample for quick analysis using the current random seed
+    # Get a small sample of patient averages for quick analysis using the current random seed
     df = get_minimal_sample(full_df, random_seed=st.session_state.random_seed)
-    st.caption(f"Current sample seed: {st.session_state.random_seed}")
+    st.caption(f"Current sample seed: {st.session_state.random_seed} | Using patient-level averages")
     
     # Use only the 17 features used in model training
     FEATURE_COLUMNS = [

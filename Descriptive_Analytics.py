@@ -37,11 +37,10 @@ def descriptive_analytics():
     # ----------------------------------------------------
     # B. Page Content
     # ----------------------------------------------------
-    st.info("This page provides a patient-centric analysis of the temporal dataset, focusing on how measurements change over time and how sepsis develops across patient stays.")
-    st.markdown("---")
+
 
     # 1. Temporal Data Overview
-    st.subheader("1. Temporal Data Overview")
+    st.subheader("1. Data Overview")
     
     # Calculate patient-level statistics
     with st.spinner("Analyzing temporal data structure..."):
@@ -62,9 +61,6 @@ def descriptive_analytics():
     This dataset contains temporal measurements from **{unique_patients:,}** unique patients, with each patient having 
     multiple hourly records. On average, each patient has **{hours_per_patient:.1f}** hours of data, with the longest 
     patient record spanning **{max_hours}** hours.
-    
-    The temporal nature of this data is critical for sepsis prediction, as it allows us to track how patient 
-    measurements change over time before sepsis onset.
     """)
 
     # 2. Sepsis Prevalence by Patient
@@ -101,7 +97,8 @@ def descriptive_analytics():
         - **{sepsis_patients:,}** patients (**{sepsis_percentage:.1f}%**) developed sepsis
         - **{non_sepsis_patients:,}** patients (**{(100-sepsis_percentage):.1f}%**) did not develop sepsis
         
-        This patient-level analysis is more meaningful than looking at individual records, as each patient has multiple hourly measurements.
+        This patient-level analysis is more meaningful than looking at individual records, as each patient has multiple hourly measurements. Overall,
+        there are **1,552,210** total records in the dataset.
         """)
 
         # Create pie chart with optimized settings
@@ -199,10 +196,10 @@ def descriptive_analytics():
                 
                 # Add clinical interpretation
                 st.markdown("""
-                **Clinical Interpretation**: This chart shows when sepsis was first detected in patients. 
+                This chart shows when sepsis was first detected in patients. 
                 The bars represent the number of patients whose sepsis was detected within each time period, 
                 while the blue line shows the cumulative percentage of sepsis cases detected over time.
-                Early detection is critical for improving patient outcomes.
+                Early detection is critical for improving patient outcomes. [1]
                 """)
 
     # 3. Temporal Feature Analysis
@@ -595,5 +592,5 @@ def descriptive_analytics():
             **Clinical Interpretation**: These charts show the proportion of sepsis cases within each gender group,
             based on data from **all patients** in the dataset. Gender differences in sepsis prevalence and outcomes 
             have been reported in clinical literature, with some studies suggesting that biological sex may influence 
-            immune responses and sepsis pathophysiology.
+            immune responses and sepsis pathophysiology. [2]
             """)

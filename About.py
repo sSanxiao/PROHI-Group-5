@@ -6,7 +6,7 @@ def about_page():
     
     st.subheader("About the Project")
     st.markdown("""
-    The ASPoS aims to develop an early warning decision support system to assist healthcare professionals in the intensive care unit (ICU) with the timely identification of patients at risk of sepsis. Sepsis is a severe and life-threatening condition with high mortality rates and significant healthcare costs [1]. The project utilizes machine learning techniques to continuously analyze vital signs and laboratory results, thereby identifying subtle patterns that may indicate the early stages of sepsis before they become clinically evident [2].
+    The ASPoS aims to develop an early warning decision support system to assist healthcare professionals in the intensive care unit (ICU) with the timely identification of patients at risk of sepsis. Sepsis is a severe and life-threatening condition with high mortality rates and significant healthcare costs [3]. The project utilizes machine learning techniques to continuously analyze vital signs and laboratory results, thereby identifying subtle patterns that may indicate the early stages of sepsis before they become clinically evident [4].
     
     The dashboard includes:
     
@@ -59,11 +59,16 @@ def about_page():
     
     st.subheader("References")
     st.markdown("""
-    1. Fleischmann-Struzek C, Mellhammar L, Rose N, Cassini A, Rudd KE, Schlattmann P, et al. Incidence and mortality of hospital- and ICU-treated sepsis: results from an updated and expanded systematic review and meta-analysis. Intensive Care Med. 2020;46(8):1552-1562. doi: 10.1007/s00134-020-06151-x.
     
-    2. Rawat S, Shanmugam H, Airen L. Machine Learning and Deep Learning Models for Early Sepsis Prediction: A Scoping Review. Indian journal of critical care medicine. 2025;29(6):516–524. doi: 10.5005/jp-journals-10071-24986
+    1. Seymour CW, Gesten F, Prescott HC, et al. Time to treatment and mortality during mandated emergency care for sepsis. N Engl J Med. 2017;376(23):2235–44. doi:10.1056/NEJMoa1703058.
+                
+    2. Min SY, Yong HJ, Kim D. Sex or gender differences in treatment outcomes of sepsis and septic shock. Acute Crit Care. 2024;39(2):207–13. doi:10.4266/acc.2024.00591
+                
+    3. Fleischmann-Struzek C, Mellhammar L, Rose N, Cassini A, Rudd KE, Schlattmann P, et al. Incidence and mortality of hospital- and ICU-treated sepsis: results from an updated and expanded systematic review and meta-analysis. Intensive Care Med. 2020;46(8):1552-1562. doi: 10.1007/s00134-020-06151-x.
     
-    3. Kaggle Dataset: [Prediction of Sepsis](https://www.kaggle.com/datasets/salikhussaini49/prediction-of-sepsis)
+    4. Rawat S, Shanmugam H, Airen L. Machine Learning and Deep Learning Models for Early Sepsis Prediction: A Scoping Review. Indian journal of critical care medicine. 2025;29(6):516–524. doi: 10.5005/jp-journals-10071-24986
+    
+    5. Kaggle Dataset: [Prediction of Sepsis](https://www.kaggle.com/datasets/salikhussaini49/prediction-of-sepsis)
     """)
     
     st.subheader("Contact Information")
