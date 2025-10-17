@@ -200,11 +200,15 @@ def load_dataset():
         data_path = "./data/cleaned_dataset.csv"
         df = pd.read_csv(data_path)
         
-        # Drop specified columns
-        columns_drop = {
-            'Unnamed: 0', 'Unit1', 'Unit2'
-        }
-        df = df.drop(columns=[col for col in columns_drop if col in df.columns])
+        # Keep only the 17 features we need plus ID and label
+        columns_to_keep = [
+            'Hour', 'HR', 'O2Sat', 'Temp', 'SBP', 'MAP', 'Resp', 'HCO3', 'pH', 'PaCO2', 
+            'Creatinine', 'Bilirubin_direct', 'WBC', 'Platelets', 'ICULOS', 'Age', 'Gender',
+            'Patient_ID', 'SepsisLabel'
+        ]
+        # Only keep columns that exist in the dataframe
+        columns_to_keep = [col for col in columns_to_keep if col in df.columns]
+        df = df[columns_to_keep]
         
         # Convert SepsisLabel to category if it exists
         if 'SepsisLabel' in df.columns:
@@ -291,6 +295,8 @@ from Prescriptive_Analytics import prescriptive_analytics
 from About import about_page
 
 def main():
+   
+    
     # Define tab data
     tabs = [
         {"id": "descriptive", "icon": "📊", "label": "Descriptive Analytics", "function": descriptive_analytics},
