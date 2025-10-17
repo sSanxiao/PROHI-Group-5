@@ -871,6 +871,8 @@ def predictive_analytics():
             if not consent_rf:
                 st.warning("Please acknowledge the consent notice before proceeding with the prediction.")
             else:
+                # Save input data to session state for use in Prescriptive Analytics
+                st.session_state.predictive_input = input_data.copy()
                 # Display a prominent disclaimer
                 st.warning("""
                 **IMPORTANT DISCLAIMER**: This prediction is based on a machine learning model and is not a substitute for professional medical diagnosis. 
