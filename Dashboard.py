@@ -12,6 +12,40 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Force white theme
+st.markdown("""
+<style>
+/* Force white background for the entire app */
+.stApp {
+    background-color: white;
+}
+
+/* Force white background for main content area */
+.main .block-container {
+    background-color: white;
+}
+
+/* Force white background for sidebar */
+section[data-testid="stSidebar"] {
+    background-color: white;
+}
+
+/* Force white background for all containers */
+div[data-testid="stVerticalBlock"] {
+    background-color: white;
+}
+
+/* Override any dark theme styles */
+.stApp > header {
+    background-color: white;
+}
+
+.stApp > div {
+    background-color: white;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # Create directory structure if it doesn't exist
 os.makedirs("assets", exist_ok=True)
 os.makedirs("models", exist_ok=True)
