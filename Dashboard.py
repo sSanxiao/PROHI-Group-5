@@ -42,16 +42,6 @@ def load_large_data_from_gcs(gcs_path, storage_options):
         st.error(f"Cannot load dataset from GCS. Please check keys,GCS file PATH or permission.Detalied Information: {e}")
         return None
 
-# ----------------------------------------------------
-# 主应用逻辑
-# ----------------------------------------------------
-storage_options = get_gcs_storage_options()
-df = load_large_data_from_gcs(GCS_FILE_PATH, storage_options)
-
-if df is not None:
-    st.success("🎉 Load Successfully！")
-    st.write(f"Rows In Total: {len(df)}")
-    st.dataframe(df.head())
 
 # Set page config
 st.set_page_config(
@@ -356,15 +346,14 @@ def main():
     ]
     
     # Load data once for all tabs
- # 1. 获取认证选项
+    with st.spinner("Loading data..."): # <--- 重新添加 with 块
+        # 1. 获取认证选项
         storage_options = get_gcs_storage_options() 
         
         # 2. 使用 GCS 加载数据 (使用 Dashboard.py 开头的 GCS_FILE_PATH)
         df = load_large_data_from_gcs(GCS_FILE_PATH, storage_options) 
         
-        # ⚠️ 注意：您可能需要在这里调用一个后续的“数据清洗/筛选”函数
-        # 因为您原来的 load_dataset() 函数中包含了列筛选逻辑。
-        # 让我们把原来的筛选逻辑保留下来，并确保它在 GCS 加载后运行。
+        # 3. 数据预处理
         df_processed = preprocess_gcs_data(df) # 调用新的数据处理函数
         
         model_data = load_model()
