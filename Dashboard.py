@@ -334,7 +334,6 @@ from Prescriptive_Analytics import prescriptive_analytics
 from About import about_page
 
 def main():
-   
     
     # Define tab data
     tabs = [
@@ -351,7 +350,7 @@ def main():
         storage_options = get_gcs_storage_options() 
         
         # 2. 使用 GCS 加载数据 (使用 Dashboard.py 开头的 GCS_FILE_PATH)
-        df = load_large_data_from_gcs(GCS_FILE_PATH, _storage_options) 
+        df = load_large_data_from_gcs(GCS_FILE_PATH, _storage_options=storage_options) 
         
         # 3. 数据预处理
         df_processed = preprocess_gcs_data(df) # 调用新的数据处理函数
