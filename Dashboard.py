@@ -3,6 +3,55 @@ import pandas as pd
 import numpy as np
 import os
 import joblib
+import json
+from google.oauth2 import service_account
+
+GCS_FILE_PATH = "gs://prohi_group_5/cleaned_dataset.csv"
+
+# ----------------------------------------------------
+# 函数：获取 GCS 认证选项
+# ----------------------------------------------------
+def get_gcs_storage_options():
+    # 1. 检查 Streamlit Cloud Secrets 中是否有密钥 (用于部署环境)
+    if "gcp_service_account" in st.secrets:
+        # Streamlit Secrets 将 JSON 密钥存储为字符串
+        # 我们需要将其解析为 Python 字典
+        key_dict = json.loads(st.secrets["gcp_service_account"])
+        
+        # 从字典创建服务账号凭证对象
+        credentials = service_account.Credentials.from_service_account_info(key_dict)
+        
+        # 返回 gcsfs 所需的 token 认证参数
+        return {'token': credentials}
+        
+    # 2. 如果 Secrets 中没有密钥 (用于本地环境)
+    else:
+        # gcsfs 将自动尝试使用 gcloud auth application-default login
+        # 或 GOOGLE_APPLICATION_CREDENTIALS 环境变量
+        # 本地验证步骤将依赖于此
+        return {}
+
+
+@st.cache_data(show_spinner="Loading Dataset From Google Cloud Storage ...")
+def load_large_data_from_gcs(gcs_path, storage_options):
+    try:
+        # pandas 和 gcsfs 协同工作，通过 storage_options 进行认证
+        df = pd.read_csv(gcs_path, storage_options=storage_options)
+        return df
+    except Exception as e:
+        st.error(f"Cannot load dataset from GCS. Please check keys,GCS file PATH or permission.Detalied Information: {e}")
+        return None
+
+# ----------------------------------------------------
+# 主应用逻辑
+# ----------------------------------------------------
+storage_options = get_gcs_storage_options()
+df = load_large_data_from_gcs(GCS_FILE_PATH, storage_options)
+
+if df is not None:
+    st.success("🎉 Load Successfully！")
+    st.write(f"Rows In Total: {len(df)}")
+    st.dataframe(df.head())
 
 # Set page config
 st.set_page_config(
