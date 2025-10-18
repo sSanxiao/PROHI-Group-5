@@ -28,3 +28,7 @@ tqdm>=4.64.0,<5.0.0
 # Optional: For enhanced notebook experience
 notebook>=6.4.0,<8.0.0
 jupyterlab>=3.0.0,<5.0.0
+
+# Google Cloud Service
+gcsfs
+fsspec
