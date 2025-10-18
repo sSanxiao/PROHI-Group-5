@@ -33,7 +33,9 @@ The project uses the [Prediction of Sepsis dataset from Kaggle](https://www.kagg
    pip install -r requirements.txt
    ```
 
-3. Download the dataset from Kaggle and place it in the `data` directory as `cleaned_dataset.csv`.
+3. Download the dataset from [Google Drive](https://drive.google.com/drive/folders/1x2t96urrNwZdKQHUXvVjhE9bH5-VaBSu?usp=sharing) and place the files in the `data` directory:
+   - Download `Dataset.csv` (original dataset)
+   - Download `cleaned_dataset.csv` (preprocessed dataset)
 
 4. Run the dashboard:
    ```
