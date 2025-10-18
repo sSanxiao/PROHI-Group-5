@@ -3,45 +3,6 @@ import pandas as pd
 import numpy as np
 import os
 import joblib
-import json
-from google.oauth2 import service_account
-
-GCS_FILE_PATH = "gs://prohi_group_5/cleaned_dataset.csv"
-
-# ----------------------------------------------------
-# 函数：获取 GCS 认证选项
-# ----------------------------------------------------
-def get_gcs_storage_options():
-    # 1. 检查 Streamlit Cloud Secrets 中是否有密钥 (用于部署环境)
-    if "gcp_service_account" in st.secrets:
-        # Streamlit Secrets 将 JSON 密钥存储为字符串
-        # 我们需要将其解析为 Python 字典
-        key_dict = json.loads(st.secrets["gcp_service_account"])
-        
-        # 从字典创建服务账号凭证对象
-        credentials = service_account.Credentials.from_service_account_info(key_dict)
-        
-        # 返回 gcsfs 所需的 token 认证参数
-        return {'token': credentials}
-        
-    # 2. 如果 Secrets 中没有密钥 (用于本地环境)
-    else:
-        # gcsfs 将自动尝试使用 gcloud auth application-default login
-        # 或 GOOGLE_APPLICATION_CREDENTIALS 环境变量
-        # 本地验证步骤将依赖于此
-        return {}
-
-
-@st.cache_data(show_spinner="Loading Dataset From Google Cloud Storage ...")
-def load_large_data_from_gcs(gcs_path, _storage_options):
-    try:
-        # pandas 和 gcsfs 协同工作，通过 storage_options 进行认证
-        df = pd.read_csv(gcs_path, storage_options=_storage_options)
-        return df
-    except Exception as e:
-        st.error(f"Cannot load dataset from GCS. Please check keys,GCS file PATH or permission.Detalied Information: {e}")
-        return None
-
 
 # Set page config
 st.set_page_config(
@@ -233,12 +194,12 @@ section[data-testid="stSidebar"] {
 
 # Centralized data loading functions with caching
 @st.cache_data(ttl=3600)  # Cache for 1 hour
-def preprocess_gcs_data(df):
-    """Apply necessary preprocessing (like column filtering) after GCS load"""
-    if df is None:
-        return None
+def load_dataset():
+    """Load and preprocess the main dataset"""
+    try:
+        data_path = "./data/cleaned_dataset.csv"
+        df = pd.read_csv(data_path)
         
-    try:   
         # Keep only the 17 features we need plus ID and label
         columns_to_keep = [
             'Hour', 'HR', 'O2Sat', 'Temp', 'SBP', 'MAP', 'Resp', 'HCO3', 'pH', 'PaCO2', 
@@ -334,6 +295,7 @@ from Prescriptive_Analytics import prescriptive_analytics
 from About import about_page
 
 def main():
+   
     
     # Define tab data
     tabs = [
@@ -345,23 +307,15 @@ def main():
     ]
     
     # Load data once for all tabs
-    with st.spinner("Loading data..."): # <--- 重新添加 with 块
-        # 1. 获取认证选项
-        storage_options = get_gcs_storage_options() 
-        
-        # 2. 使用 GCS 加载数据 (使用 Dashboard.py 开头的 GCS_FILE_PATH)
-        df = load_large_data_from_gcs(GCS_FILE_PATH, _storage_options=storage_options) 
-        
-        # 3. 数据预处理
-        df_processed = preprocess_gcs_data(df) # 调用新的数据处理函数
-        
+    with st.spinner("Loading data..."):
+        df = load_dataset()
         model_data = load_model()
-        balanced_sample = get_balanced_sample(df_processed) # 使用处理后的数据
+        balanced_sample = get_balanced_sample(df)
     
     # Store data in session state for access across tabs
     if 'data' not in st.session_state:
         st.session_state.data = {
-            'df': df_processed,
+            'df': df,
             'model_data': model_data,
             'balanced_sample': balanced_sample
         }
