@@ -243,12 +243,12 @@ section[data-testid="stSidebar"] {
 
 # Centralized data loading functions with caching
 @st.cache_data(ttl=3600)  # Cache for 1 hour
-def load_dataset():
-    """Load and preprocess the main dataset"""
-    try:
-        data_path = "./data/cleaned_dataset.csv"
-        df = pd.read_csv(data_path)
+def preprocess_gcs_data(df):
+    """Apply necessary preprocessing (like column filtering) after GCS load"""
+    if df is None:
+        return None
         
+    try:   
         # Keep only the 17 features we need plus ID and label
         columns_to_keep = [
             'Hour', 'HR', 'O2Sat', 'Temp', 'SBP', 'MAP', 'Resp', 'HCO3', 'pH', 'PaCO2', 
@@ -356,15 +356,24 @@ def main():
     ]
     
     # Load data once for all tabs
-    with st.spinner("Loading data..."):
-        df = load_dataset()
+ # 1. 获取认证选项
+        storage_options = get_gcs_storage_options() 
+        
+        # 2. 使用 GCS 加载数据 (使用 Dashboard.py 开头的 GCS_FILE_PATH)
+        df = load_large_data_from_gcs(GCS_FILE_PATH, storage_options) 
+        
+        # ⚠️ 注意：您可能需要在这里调用一个后续的“数据清洗/筛选”函数
+        # 因为您原来的 load_dataset() 函数中包含了列筛选逻辑。
+        # 让我们把原来的筛选逻辑保留下来，并确保它在 GCS 加载后运行。
+        df_processed = preprocess_gcs_data(df) # 调用新的数据处理函数
+        
         model_data = load_model()
-        balanced_sample = get_balanced_sample(df)
+        balanced_sample = get_balanced_sample(df_processed) # 使用处理后的数据
     
     # Store data in session state for access across tabs
     if 'data' not in st.session_state:
         st.session_state.data = {
-            'df': df,
+            'df': df_processed,
             'model_data': model_data,
             'balanced_sample': balanced_sample
         }
