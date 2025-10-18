@@ -33,10 +33,10 @@ def get_gcs_storage_options():
 
 
 @st.cache_data(show_spinner="Loading Dataset From Google Cloud Storage ...")
-def load_large_data_from_gcs(gcs_path, storage_options):
+def load_large_data_from_gcs(gcs_path, _storage_options):
     try:
         # pandas 和 gcsfs 协同工作，通过 storage_options 进行认证
-        df = pd.read_csv(gcs_path, storage_options=storage_options)
+        df = pd.read_csv(gcs_path, storage_options=_storage_options)
         return df
     except Exception as e:
         st.error(f"Cannot load dataset from GCS. Please check keys,GCS file PATH or permission.Detalied Information: {e}")
@@ -351,7 +351,7 @@ def main():
         storage_options = get_gcs_storage_options() 
         
         # 2. 使用 GCS 加载数据 (使用 Dashboard.py 开头的 GCS_FILE_PATH)
-        df = load_large_data_from_gcs(GCS_FILE_PATH, storage_options) 
+        df = load_large_data_from_gcs(GCS_FILE_PATH, _storage_options) 
         
         # 3. 数据预处理
         df_processed = preprocess_gcs_data(df) # 调用新的数据处理函数
