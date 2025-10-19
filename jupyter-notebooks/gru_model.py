@@ -180,9 +180,6 @@ class GRUSequenceModel:
                     if window_label == 1:
                         sepsis_windows += 1
             
-            # Progress update every 1000 patients
-            if (i + 1) % 1000 == 0:
-                print(f"Processed {i+1}/{len(patient_ids)} patients")
         
         print(f"\nCreated {total_windows} sliding windows from {len(patient_ids)} patients")
         print(f"Sepsis rate in windows: {sepsis_windows/total_windows:.1%}")
@@ -530,22 +527,12 @@ class GRUSequenceModel:
         # Make predictions
         predictions, probabilities = self.predict(X_test, threshold=0.5 if threshold is None else threshold)
         
-        # Find optimal threshold if not provided
+        # Use default threshold of 0.4 if not provided
         if threshold is None:
-            best_f1 = 0
-            best_threshold = 0.5
+            threshold = 0.4
+            print(f"Using default threshold: {threshold:.3f}")
             
-            for t in np.arange(0.1, 0.9, 0.05):
-                y_pred = (probabilities >= t).astype(int)
-                f1 = f1_score(y_test, y_pred)
-                if f1 > best_f1:
-                    best_f1 = f1
-                    best_threshold = t
-            
-            threshold = best_threshold
-            print(f"Optimal threshold: {threshold:.3f}")
-            
-            # Update predictions with optimal threshold
+            # Update predictions with default threshold
             predictions = (probabilities >= threshold).astype(int)
         
         # Calculate metrics
@@ -615,31 +602,20 @@ class GRUSequenceModel:
         plt.legend()
         
         plt.tight_layout()
-        plt.savefig('assets/prediction_distributions_sliding.png', 
-                    dpi=300, 
-                    bbox_inches='tight',
-                    facecolor='white',
-                    edgecolor='none')
+        # Try to save plot, but don't fail if directory doesn't exist
+        try:
+            os.makedirs('../assets', exist_ok=True)
+            plt.savefig('../assets/GRU_prediction_distributions.png', 
+                        dpi=300, 
+                        bbox_inches='tight',
+                        facecolor='white',
+                        edgecolor='none')
+            print("Saved prediction distributions plot")
+        except Exception as e:
+            print(f"Could not save prediction distributions plot: {e}")
         plt.close()
         
-        # Second figure: ROC curve
-        plt.figure(figsize=(10, 8))
-        fpr, tpr, _ = roc_curve(y_test, probabilities)
-        plt.plot(fpr, tpr, label=f'AUC = {auc:.3f}')
-        plt.plot([0, 1], [0, 1], 'k--', alpha=0.5)
-        plt.xlabel('False Positive Rate')
-        plt.ylabel('True Positive Rate')
-        plt.title('ROC Curve')
-        plt.legend()
-        plt.grid(True, alpha=0.3)
-        
-        plt.tight_layout()
-        plt.savefig('assets/roc_curves_sliding.png', 
-                    dpi=300, 
-                    bbox_inches='tight',
-                    facecolor='white',
-                    edgecolor='none')
-        plt.close()
+        # Skip ROC curve plot
         
         # Third figure: Confusion Matrix
         plt.figure(figsize=(10, 8))
@@ -662,31 +638,18 @@ class GRUSequenceModel:
         plt.ylabel('Actual Label')
         
         plt.tight_layout()
-        plt.savefig('assets/confusion_matrix_sliding.png', 
-                    dpi=300, 
-                    bbox_inches='tight',
-                    facecolor='white',
-                    edgecolor='none')
-        plt.close()
-        
-        # Plot training history if available
-        if hasattr(self, 'history'):
-            plt.figure(figsize=(10, 6))
-            plt.plot(self.history['loss'], label='Training Loss')
-            plt.plot(self.history['val_loss'], label='Validation Loss')
-            plt.title('Training History')
-            plt.xlabel('Epochs')
-            plt.ylabel('Loss')
-            plt.legend()
-            plt.grid(True, alpha=0.3)
-            
-            plt.tight_layout()
-            plt.savefig('assets/training_history_sliding.png', 
+        try:
+            plt.savefig('../assets/GRU_confusion_matrix.png', 
                         dpi=300, 
                         bbox_inches='tight',
                         facecolor='white',
                         edgecolor='none')
-            plt.close()
+            print("Saved confusion matrix plot")
+        except Exception as e:
+            print(f"Could not save confusion matrix plot: {e}")
+        plt.close()
+        
+        # Skip training history plot
         
         # Visualize predictions for full sequences for a few examples
         # This demonstrates how the model would predict on a full patient sequence
@@ -744,11 +707,7 @@ class GRUSequenceModel:
                     plt.legend(loc='upper left')
             
             plt.tight_layout()
-            plt.savefig('assets/sequence_predictions_sliding.png', 
-                        dpi=300, 
-                        bbox_inches='tight',
-                        facecolor='white',
-                        edgecolor='none')
+            # Skip sequence predictions plot
             plt.close()
             
             # Print detailed sequence predictions for one example
@@ -823,9 +782,9 @@ class GRUSequenceModel:
 
 if __name__ == "__main__":
     # Create directories
-    os.makedirs('assets', exist_ok=True)
-    os.makedirs('models', exist_ok=True)
-    os.makedirs('data', exist_ok=True)
+    os.makedirs('../assets', exist_ok=True)
+    os.makedirs('../models', exist_ok=True)
+    os.makedirs('../data', exist_ok=True)
     
     # Create and train model
     model = GRUSequenceModel(dropout=0.3)  # Reduced dropout

@@ -184,54 +184,55 @@ class GRUSequenceWrapper:
 @st.cache_resource
 def load_rf_model():
     """Load the Random Forest model"""
-    try:
-        data = joblib.load(CONFIG['RF_MODEL_PATH'])
-        print(f"Successfully loaded Random Forest model from {CONFIG['RF_MODEL_PATH']}")
-        
-        # Verify the scaler is fitted
-        if 'scaler' in data:
+    
+    data = joblib.load(CONFIG['RF_MODEL_PATH'])
+    print(f"Successfully loaded Random Forest model from {CONFIG['RF_MODEL_PATH']}")
+    
+    # Verify the scaler is fitted
+    if 'scaler' in data:
+        try:
+            # Test the scaler with a dummy input
+            test_input = np.zeros((1, len(FEATURE_COLUMNS)))
+            data['scaler'].transform(test_input)
+            print("Scaler verification successful")
+        except Exception as e:
+            print(f"Scaler verification failed: {e}")
+            # Replace with a new scaler fitted on actual data
+            from sklearn.preprocessing import StandardScaler
+            print("Creating new scaler with actual dataset...")
             try:
-                # Test the scaler with a dummy input
-                test_input = np.zeros((1, len(FEATURE_COLUMNS)))
-                data['scaler'].transform(test_input)
-                print("Scaler verification successful")
-            except Exception as e:
-                print(f"Scaler verification failed: {e}")
-                # Replace with a new scaler
-                from sklearn.preprocessing import StandardScaler
-                print("Creating new scaler")
+                # Load the actual dataset to fit the scaler properly
+                df_temp = pd.read_csv('./data/cleaned_dataset.csv')
+                X_temp = df_temp[FEATURE_COLUMNS].fillna(0)
+                data['scaler'] = StandardScaler()
+                data['scaler'].fit(X_temp)
+                print("Scaler fitted with actual dataset successfully!")
+            except Exception as fit_error:
+                print(f"Could not fit scaler with actual data: {fit_error}")
+                print("Using dummy data as fallback (not recommended for production)")
                 X_dummy = np.random.rand(100, len(FEATURE_COLUMNS))
                 data['scaler'] = StandardScaler()
                 data['scaler'].fit(X_dummy)
-        else:
-            # Create a scaler if missing
-            from sklearn.preprocessing import StandardScaler
-            print("Scaler missing, creating new one")
+    else:
+        # Create a scaler if missing
+        from sklearn.preprocessing import StandardScaler
+        print("Scaler missing, creating new one with actual dataset...")
+        try:
+            # Load the actual dataset to fit the scaler properly
+            df_temp = pd.read_csv('./data/cleaned_dataset.csv')
+            X_temp = df_temp[FEATURE_COLUMNS].fillna(0)
+            data['scaler'] = StandardScaler()
+            data['scaler'].fit(X_temp)
+            print("Scaler fitted with actual dataset successfully!")
+        except Exception as fit_error:
+            print(f"Could not fit scaler with actual data: {fit_error}")
+            print("Using dummy data as fallback (not recommended for production)")
             X_dummy = np.random.rand(100, len(FEATURE_COLUMNS))
             data['scaler'] = StandardScaler()
             data['scaler'].fit(X_dummy)
-            
-        return data
-    except Exception as e:
-        st.warning(f"Error loading Random Forest model: {e}")
-        # Create a dummy model
-        from sklearn.ensemble import RandomForestClassifier
-        from sklearn.preprocessing import StandardScaler
         
-        print("Creating dummy model and scaler")
-        model = RandomForestClassifier(n_estimators=100, random_state=42)
-        X_dummy = np.random.rand(100, len(FEATURE_COLUMNS))
-        y_dummy = np.random.randint(0, 2, 100)
-        model.fit(X_dummy, y_dummy)
-        
-        scaler = StandardScaler()
-        scaler.fit(X_dummy)
-        
-        return {
-            'model': model,
-            'scaler': scaler,
-            'features': FEATURE_COLUMNS
-        }
+    return data
+
 
 # Load GRU model
 def load_gru_model():
@@ -353,20 +354,22 @@ def create_tree_distribution_plot(tree_scores, threshold_sepsis, threshold_no_se
         name='Tree Predictions'
     ))
     
-    # Add count annotations for all scores
+    # Add count annotations for scores with count > 1
     for score, count in score_counts.items():
-        fig.add_annotation(
-            x=float(score),
-            y=0.05,  # Slightly above the dots
-            text=f"{count}",
-            showarrow=False,
-            font=dict(size=12, color="black", family="Arial Black"),
-            bgcolor="rgba(255, 255, 255, 0.7)",
-            bordercolor="black",
-            borderwidth=1,
-            borderpad=2,
-            opacity=0.8
-        )
+        if count > 1:
+            fig.add_annotation(
+                x=float(score),
+                y=0.05,  # Slightly above the dots
+                yanchor="bottom",
+                text=f"{count}",
+                showarrow=False,
+                font=dict(size=12, color="black", family="Arial Black"),
+                bgcolor="rgba(255, 255, 255, 0.7)",
+                bordercolor="black",
+                borderwidth=1,
+                borderpad=2,
+                opacity=0.8
+            )
     
     # Calculate average score
     avg_score = np.mean(tree_scores)

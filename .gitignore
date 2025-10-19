@@ -172,3 +172,4 @@ models/*
 !models/random_forest.pkl
 !models/gru_temporal_best.pth
 data/prepared_gru_data_sliding.pkl
+jupyter-notebooks/data
