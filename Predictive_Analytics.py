@@ -14,7 +14,8 @@ CONFIG = {
     'THRESHOLD_SEPSIS': 0.44,      # Above this = Sepsis
     'THRESHOLD_NO_SEPSIS': 0.34,   # Below this = No Sepsis
     'RF_MODEL_PATH': './models/random_forest.pkl',  
-    'GRU_MODEL_PATH': './models/gru_temporal_best.pth',
+    'GRU_MODEL_PATH': './models/gru_sliding_model.pth',
+    'GRU_METADATA_PATH': './models/gru_sliding_model_metadata.pkl',
     'PRIORITY_IMAGES_PATH': './assets/priority/'
 }
 
@@ -67,105 +68,95 @@ FEATURE_DISPLAY_NAMES = {
     'Hour': 'Hour'
 }
 
-# GRU Model Definition
+# GRU Model Definition (Improved Architecture)
 class GRUModel(nn.Module):
-    def __init__(self, input_size, hidden_size=128, num_layers=2, dropout=0.3):
+    def __init__(self, input_size, dropout=0.6):
         super(GRUModel, self).__init__()
         
-        # GRU layers
-        self.gru = nn.GRU(
-            input_size=input_size,
-            hidden_size=hidden_size,
-            num_layers=num_layers,
-            batch_first=True,
-            dropout=dropout if num_layers > 1 else 0,
-            bidirectional=True
-        )
+        # Simplified GRU architecture to reduce overfitting
+        self.gru = nn.GRU(input_size, 64, batch_first=True, bidirectional=True, num_layers=1, dropout=dropout)
         
-        # Attention mechanism
+        # Simple attention mechanism
         self.attention = nn.Sequential(
-            nn.Linear(hidden_size * 2, hidden_size),
+            nn.Linear(64*2, 32),
             nn.Tanh(),
-            nn.Linear(hidden_size, 1)
+            nn.Linear(32, 1)
         )
         
-        # Output layers
-        self.fc = nn.Sequential(
-            nn.Linear(hidden_size * 2, hidden_size),
-            nn.LayerNorm(hidden_size),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_size, 64),
-            nn.LayerNorm(64),
-            nn.ReLU(),
-            nn.Dropout(dropout * 0.5),
-            nn.Linear(64, 1)
-        )
+        # Simplified classification layers
+        self.fc1 = nn.Linear(64*2, 32)
+        self.dropout1 = nn.Dropout(dropout)
+        self.fc2 = nn.Linear(32, 1)
+        
+        # Initialize weights properly
+        self.apply(self._init_weights)
     
-    def forward(self, x, lengths=None):
-        # x shape: (batch_size, seq_len, input_size)
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            torch.nn.init.xavier_uniform_(module.weight)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.GRU):
+            for name, param in module.named_parameters():
+                if 'weight' in name:
+                    torch.nn.init.xavier_uniform_(param)
+                elif 'bias' in name:
+                    torch.nn.init.zeros_(param)
+    
+    def forward(self, x):
+        # Create a mask for padding (if any)
+        mask = (x.sum(dim=2) != 0).float().unsqueeze(-1)  # [batch, seq_len, 1]
         
-        # If lengths are provided, use packed sequence
-        if lengths is not None:
-            # Pack padded sequence for more efficient computation
-            packed_input = nn.utils.rnn.pack_padded_sequence(
-                x, lengths.cpu(), batch_first=True, enforce_sorted=False
-            )
-            
-            # Apply GRU
-            packed_output, _ = self.gru(packed_input)
-            
-            # Unpack the sequence
-            output, _ = nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True)
-        else:
-            # If no lengths provided, just run the GRU directly
-            output, _ = self.gru(x)
+        # Simplified GRU processing
+        gru_out, _ = self.gru(x)  # [batch, seq_len, 64*2]
         
-        # output shape: (batch_size, seq_len, hidden_size * 2)
+        # Apply attention to focus on important timesteps
+        attention_scores = self.attention(gru_out)  # [batch, seq_len, 1]
         
-        # Apply attention
-        batch_size, seq_len, hidden_size = output.size()
-        
-        # Calculate attention scores
-        attention_scores = self.attention(output).squeeze(-1)
-        # attention_scores shape: (batch_size, seq_len)
-        
-        if lengths is not None:
-            # Create mask for padding
-            mask = torch.zeros_like(attention_scores)
-            for i, length in enumerate(lengths):
-                mask[i, :length] = 1
-            
-            # Apply mask (set padding attention scores to -inf)
-            attention_scores = attention_scores.masked_fill(mask == 0, -1e9)
+        # Apply mask to attention scores (set padding to large negative)
+        attention_scores = attention_scores + (1 - mask) * (-1e9)
         
         # Apply softmax to get attention weights
-        attention_weights = torch.softmax(attention_scores, dim=1).unsqueeze(-1)
-        # attention_weights shape: (batch_size, seq_len, 1)
+        attention_weights = torch.softmax(attention_scores, dim=1)  # [batch, seq_len, 1]
         
         # Apply attention weights to get context vector
-        context = torch.sum(output * attention_weights, dim=1)
-        # context shape: (batch_size, hidden_size * 2)
+        context_vector = torch.sum(gru_out * attention_weights, dim=1)  # [batch, 64*2]
         
-        # Apply output layers
-        output = self.fc(context)
-        # output shape: (batch_size, 1)
+        # Apply classification layers
+        x1 = self.fc1(context_vector)
+        x1 = torch.relu(x1)
+        x1 = self.dropout1(x1)
         
-        return torch.sigmoid(output.squeeze(-1))
+        # Final classification
+        logits = self.fc2(x1)  # [batch, 1]
+        output = torch.sigmoid(logits).squeeze(-1)  # [batch]
+        
+        return output
 
 # GRU Sequence Wrapper
 class GRUSequenceWrapper:
-    def __init__(self, model, features):
+    def __init__(self, model, features, scaler=None):
         self.model = model.cpu()  # Ensure model is on CPU
         self.features = features
+        self.scaler = scaler
         self.device = 'cpu'  # Force CPU usage for consistency
         
     def predict_sequence(self, X):
-        """Predict on a sequence"""
+        """Predict on a sequence with proper scaling"""
         self.model.eval()
         
+        # Scale the input if scaler is available
+        if self.scaler is not None:
+            try:
+                X_scaled = self.scaler.transform(X)
+            except Exception as e:
+                st.warning(f"Error scaling input: {e}. Using unscaled data.")
+                X_scaled = X
+        else:
+            X_scaled = X
+        
         # Convert to tensor and ensure it's on CPU
-        X_tensor = torch.FloatTensor(X).unsqueeze(0)  # Add batch dimension
+        X_tensor = torch.FloatTensor(X_scaled).unsqueeze(0)  # Add batch dimension
         
         # Make sure model is on CPU
         self.model = self.model.cpu()
@@ -236,15 +227,16 @@ def load_rf_model():
 
 # Load GRU model
 def load_gru_model():
-    """Load the GRU model"""
+    """Load the improved GRU model"""
     try:
-        # Create a new model instance with the correct architecture
+        # Load metadata first
+        metadata = joblib.load(CONFIG['GRU_METADATA_PATH'])
+        
+        # Create a new model instance with the improved architecture
         input_size = len(FEATURE_COLUMNS)
         model = GRUModel(
             input_size=input_size,
-            hidden_size=128,
-            num_layers=2,
-            dropout=0.3
+            dropout=metadata.get('dropout', 0.6)
         )
         
         # Load the model weights - explicitly map to CPU
@@ -253,21 +245,20 @@ def load_gru_model():
         model = model.cpu()  # Ensure model is on CPU
         model.eval()  # Set to evaluation mode
         
-        # Create the wrapper
+        # Create the wrapper with scaler
         wrapper = GRUSequenceWrapper(
             model=model,
-            features=FEATURE_COLUMNS
+            features=FEATURE_COLUMNS,
+            scaler=metadata.get('scaler', None)
         )
         
         return wrapper
     except Exception as e:
         st.warning(f"Error loading GRU model: {e}")
-        # Create a dummy model
+        # Create a dummy model with improved architecture
         model = GRUModel(
             input_size=len(FEATURE_COLUMNS),
-            hidden_size=128,
-            num_layers=2,
-            dropout=0.3
+            dropout=0.6
         )
         return GRUSequenceWrapper(model=model, features=FEATURE_COLUMNS)
 
@@ -429,8 +420,22 @@ def create_tree_distribution_plot(tree_scores, threshold_sepsis, threshold_no_se
 def load_sample_patients():
     """Load and prepare a balanced set of sample patients"""
     try:
+        # Check if data file exists
+        data_path = './data/cleaned_dataset.csv'
+        if not os.path.exists(data_path):
+            st.error(f"Data file not found: {data_path}")
+            return None
+        
         # Load data
-        df = pd.read_csv('./data/cleaned_dataset.csv')
+        df = pd.read_csv(data_path)
+        print(f"DEBUG: Loaded data shape: {df.shape}")
+        
+        # Check if required columns exist
+        required_columns = ['Patient_ID', 'SepsisLabel']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            st.error(f"Missing required columns: {missing_columns}")
+            return None
         
         # Drop specified columns
         columns_drop = {
@@ -442,8 +447,14 @@ def load_sample_patients():
         sepsis_cases = df[df['SepsisLabel'] == 1]
         non_sepsis_cases = df[df['SepsisLabel'] == 0]
         
+        print(f"DEBUG: Sepsis cases: {len(sepsis_cases)}, Non-sepsis cases: {len(non_sepsis_cases)}")
+        
         # Sample equal numbers from each class (100 from each)
         n_samples = min(100, len(sepsis_cases))
+        if n_samples == 0:
+            st.error("No sepsis cases found in the data")
+            return None
+        
         balanced_sepsis = sepsis_cases.sample(n=n_samples, random_state=42)
         balanced_non_sepsis = non_sepsis_cases.sample(n=n_samples, random_state=42)
         
@@ -451,10 +462,12 @@ def load_sample_patients():
         balanced_df = pd.concat([balanced_sepsis, balanced_non_sepsis])
         balanced_df = balanced_df.sample(frac=1, random_state=42).reset_index(drop=True)
         
+        print(f"DEBUG: Final balanced sample shape: {balanced_df.shape}")
         return balanced_df
         
     except Exception as e:
         st.error(f"Error loading sample patients: {e}")
+        print(f"DEBUG: Error details: {str(e)}")
         return None
 
 def generate_random_patient_data():
@@ -1070,47 +1083,151 @@ def predictive_analytics():
         """)
         
         # Controls for sequence data
-        col1, col2, col3 = st.columns([1, 1, 1])
+        col1, col2 = st.columns([1, 1])
         
         with col1:
             if st.button("🎲 Select Random Patient", help="Load a random patient's sequence data"):
-                # Clear existing sequence
+                # Clear existing sequence and status
                 st.session_state.sequence_data = []
+                st.session_state.patient_sepsis_status = None
+                st.session_state.patient_id = None
                 
-                # Get a random patient ID
-                if SAMPLE_PATIENTS is not None:
+                # Get a random patient ID - try to load from full dataset for better sequences
+                if SAMPLE_PATIENTS is not None and len(SAMPLE_PATIENTS) > 0:
+                    # Try to load from full dataset for longer sequences
                     try:
-                        # Get a random patient with multiple records
-                        random_patient_id = SAMPLE_PATIENTS['Patient_ID'].value_counts()[SAMPLE_PATIENTS['Patient_ID'].value_counts() > 3].sample(1).index[0]
+                        full_df = pd.read_csv('./data/cleaned_dataset.csv')
+                        print(f"DEBUG: Full dataset shape: {full_df.shape}")
+                        
+                        # Get patient counts from full dataset
+                        full_patient_counts = full_df['Patient_ID'].value_counts()
+                        print(f"DEBUG: Full dataset has {len(full_patient_counts)} unique patients")
+                        
+                        # Find patients with longer sequences (prefer >10 records)
+                        patients_with_long_sequences = full_patient_counts[full_patient_counts > 10]
+                        if len(patients_with_long_sequences) == 0:
+                            # Fallback to patients with >5 records
+                            patients_with_long_sequences = full_patient_counts[full_patient_counts > 5]
+                        if len(patients_with_long_sequences) == 0:
+                            # Last resort: patients with >1 records
+                            patients_with_long_sequences = full_patient_counts[full_patient_counts > 1]
+                        
+                        if len(patients_with_long_sequences) == 0:
+                            raise ValueError("No patients found in full dataset")
+                        
+                        print(f"DEBUG: Found {len(patients_with_long_sequences)} patients with long sequences")
+                        
+                        # Check sepsis distribution in the available patients
+                        sepsis_patients = []
+                        non_sepsis_patients = []
+                        
+                        for patient_id in patients_with_long_sequences.index[:50]:  # Check first 50 for efficiency
+                            patient_data = full_df[full_df['Patient_ID'] == patient_id]
+                            has_sepsis = (patient_data['SepsisLabel'] == 1).any()
+                            if has_sepsis:
+                                sepsis_patients.append(patient_id)
+                            else:
+                                non_sepsis_patients.append(patient_id)
+                        
+                        print(f"DEBUG: Sepsis patients available: {len(sepsis_patients)}")
+                        print(f"DEBUG: Non-sepsis patients available: {len(non_sepsis_patients)}")
+                        
+                        # Prefer sepsis patients (70% chance) to get more interesting cases
+                        if len(sepsis_patients) > 0 and np.random.random() < 0.7:
+                            random_patient_id = np.random.choice(sepsis_patients)
+                            print(f"DEBUG: Selected sepsis patient: {random_patient_id}")
+                        else:
+                            # Select from all available patients
+                            random_patient_id = patients_with_long_sequences.sample(1).index[0]
+                            print(f"DEBUG: Selected random patient: {random_patient_id}")
+                        
+                        # Get all records for this patient from full dataset
+                        patient_records = full_df[full_df['Patient_ID'] == random_patient_id].sort_values('Hour')
+                        
+                        print(f"DEBUG: Using full dataset - Patient {random_patient_id} has {len(patient_records)} records")
+                        
+                    except Exception as e:
+                        print(f"DEBUG: Could not load from full dataset: {e}")
+                        print("DEBUG: Falling back to SAMPLE_PATIENTS...")
+                        # Fallback to SAMPLE_PATIENTS
+                        full_df = SAMPLE_PATIENTS
+                        patient_counts = SAMPLE_PATIENTS['Patient_ID'].value_counts()
+                        
+                        # Try to find patients with multiple records (prefer > 3, fallback to > 1)
+                        patients_with_multiple = patient_counts[patient_counts > 3]
+                        if len(patients_with_multiple) == 0:
+                            # Fallback to patients with at least 2 records
+                            patients_with_multiple = patient_counts[patient_counts > 1]
+                        
+                        if len(patients_with_multiple) == 0:
+                            # Last resort: use any patient
+                            patients_with_multiple = patient_counts
+                        
+                        if len(patients_with_multiple) == 0:
+                            raise ValueError("No patients found in sample data")
+                        
+                        # Select a random patient
+                        random_patient_id = patients_with_multiple.sample(1).index[0]
                         
                         # Get all records for this patient
                         patient_records = SAMPLE_PATIENTS[SAMPLE_PATIENTS['Patient_ID'] == random_patient_id].sort_values('Hour')
                         
-                        # Convert to list of dictionaries for sequence_data
-                        for _, row in patient_records.iterrows():
-                            timepoint = {}
-                            for feature in FEATURE_COLUMNS:
-                                if feature in row:
-                                    timepoint[feature] = row[feature]
-                            st.session_state.sequence_data.append(timepoint)
-                        
-                        st.success(f"Loaded {len(st.session_state.sequence_data)} hours of data for Patient ID: {random_patient_id}")
-                    except Exception as e:
-                        st.error(f"Error loading random patient: {str(e)}")
-                        # Fallback to generating synthetic data
-                        for hour in range(5):  # Generate 5 hours of data
-                            timepoint = generate_random_patient_data()
-                            timepoint['Hour'] = hour
-                            st.session_state.sequence_data.append(timepoint)
+                        print(f"DEBUG: Using SAMPLE_PATIENTS - Patient {random_patient_id} has {len(patient_records)} records")
+                    
+                    # Debug: Print patient record information
+                    print(f"DEBUG: Patient {random_patient_id} has {len(patient_records)} records")
+                    print(f"DEBUG: Hour range: {patient_records['Hour'].min()} to {patient_records['Hour'].max()}")
+                    print(f"DEBUG: Available hours: {sorted(patient_records['Hour'].unique())}")
+                    
+                    # Check sepsis status for this patient
+                    has_sepsis = (patient_records['SepsisLabel'] == 1).any()
+                    sepsis_hours = patient_records[patient_records['SepsisLabel'] == 1]['Hour'].tolist()
+                    
+                    # Store sepsis status in session state
+                    st.session_state.patient_sepsis_status = {
+                        'has_sepsis': has_sepsis,
+                        'sepsis_hours': sepsis_hours,
+                        'patient_id': random_patient_id
+                    }
+                    
+                    # Debug: Print sepsis status (remove this in production)
+                    print(f"DEBUG: Patient {random_patient_id} - Has Sepsis: {has_sepsis}, Hours: {sepsis_hours}")
+                    
+                    # Convert to list of dictionaries for sequence_data
+                    print(f"DEBUG: Converting {len(patient_records)} records to sequence data...")
+                    for i, (_, row) in enumerate(patient_records.iterrows()):
+                        timepoint = {}
+                        for feature in FEATURE_COLUMNS:
+                            if feature in row:
+                                timepoint[feature] = row[feature]
+                        # Also include SepsisLabel for status display
+                        if 'SepsisLabel' in row:
+                            timepoint['SepsisLabel'] = row['SepsisLabel']
+                        # Include Hour for debugging
+                        if 'Hour' in row:
+                            timepoint['Hour'] = row['Hour']
+                        st.session_state.sequence_data.append(timepoint)
+                        print(f"DEBUG: Added timepoint {i+1}: Hour {row.get('Hour', 'N/A')}, SepsisLabel {row.get('SepsisLabel', 'N/A')}")
+                    
+                    st.success(f"✅ Loaded {len(st.session_state.sequence_data)} hours of data for Patient ID: {random_patient_id}")
+
                 else:
-                    st.error("Sample patient data not available")
+                    if SAMPLE_PATIENTS is None:
+                        st.error("Sample patient data not loaded. Please check the data file.")
+                    elif len(SAMPLE_PATIENTS) == 0:
+                        st.error("Sample patient data is empty. Please check the data file.")
+                    else:
+                        st.error("Sample patient data not available")
                 
                 st.rerun()
         
         with col2:
             if st.button("🔄 Clear Sequence", help="Clear the current sequence data"):
                 st.session_state.sequence_data = []
+                st.session_state.patient_sepsis_status = None
+                st.session_state.patient_id = None
                 st.rerun()
+        
         
         # Display current sequence
         if st.session_state.sequence_data:
@@ -1120,9 +1237,42 @@ def predictive_analytics():
             # Show sequence length
             st.markdown(f"**Current Sequence Length:** {len(seq_df)} hours")
             
-            # Display the sequence data in a table
+            # Display sepsis status from session state
+            if hasattr(st.session_state, 'patient_sepsis_status') and st.session_state.patient_sepsis_status is not None:
+                status = st.session_state.patient_sepsis_status
+                patient_id = status['patient_id']
+                has_sepsis = status['has_sepsis']
+                sepsis_hours = status['sepsis_hours']
+                
+                st.markdown(f"**Patient ID:** {patient_id}")
+                
+                # Display sepsis status
+                if has_sepsis:
+                    if len(sepsis_hours) == 1:
+                        st.warning(f"🚨 **Patient HAS SEPSIS** at hour {sepsis_hours[0]}")
+                    else:
+                        st.warning(f"🚨 **Patient HAS SEPSIS** at hours: {', '.join(map(str, sepsis_hours))}")
+                else:
+                    st.success("✅ **Patient does NOT develop sepsis**")
+            
+            # Check if we have sepsis information in the sequence data (fallback)
+            elif 'SepsisLabel' in seq_df.columns:
+                has_sepsis = (seq_df['SepsisLabel'] == 1).any()
+                sepsis_hours = seq_df[seq_df['SepsisLabel'] == 1]['Hour'].tolist()
+                
+                # Display sepsis status
+                if has_sepsis:
+                    if len(sepsis_hours) == 1:
+                        st.warning(f"🚨 **Patient HAS SEPSIS** at hour {sepsis_hours[0]}")
+                    else:
+                        st.warning(f"🚨 **Patient HAS SEPSIS** at hours: {', '.join(map(str, sepsis_hours))}")
+                else:
+                    st.success("✅ **Patient does NOT develop sepsis**")
+            
+            # Display the sequence data in a table (exclude SepsisLabel from display)
+            display_columns = [col for col in FEATURE_COLUMNS if col in seq_df.columns]
             st.dataframe(
-                seq_df[FEATURE_COLUMNS],
+                seq_df[display_columns],
                 use_container_width=True,
                 hide_index=True
             )
@@ -1145,13 +1295,18 @@ def predictive_analytics():
                 seq_df = pd.DataFrame(st.session_state.sequence_data)
                 if 'Hour' in seq_df.columns:
                     next_hour = int(seq_df['Hour'].max() + 1)
+                    # Warn if the sequence is getting very long
+                    if next_hour > 500:
+                        st.warning(f"⚠️ Sequence is very long ({next_hour} hours). Consider starting a new sequence.")
+                        next_hour = 0  # Reset to 0 for new sequence
             
             new_timepoint['Hour'] = form_cols[0].number_input(
                 FEATURE_DISPLAY_NAMES.get('Hour', 'Hour'),
                 min_value=0,
-                max_value=240,
+                max_value=500,  # Increased max_value to accommodate longer sequences
                 value=next_hour,
-                step=1
+                step=1,
+                help="Hour of the timepoint (0-500)"
             )
             
             # Add other fields

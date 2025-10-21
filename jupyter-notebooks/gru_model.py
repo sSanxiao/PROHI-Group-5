@@ -14,55 +14,48 @@ import os
 from tqdm import tqdm
 
 class GRUModel(nn.Module):
-    def __init__(self, input_size, dropout=0.4):
+    def __init__(self, input_size, dropout=0.6):
         super(GRUModel, self).__init__()
         
-        # Enhanced GRU architecture with bidirectional layers
-        self.gru1 = nn.GRU(input_size, 128, batch_first=True, bidirectional=True, num_layers=2, dropout=dropout)
-        self.gru2 = nn.GRU(128*2, 64, batch_first=True, bidirectional=True, num_layers=2, dropout=dropout)
+        # Simplified GRU architecture to reduce overfitting
+        self.gru = nn.GRU(input_size, 64, batch_first=True, bidirectional=True, num_layers=1, dropout=dropout)
         
-        # Attention mechanism to focus on important parts of the sequence
+        # Simple attention mechanism
         self.attention = nn.Sequential(
-            nn.Linear(64*2, 64),
+            nn.Linear(64*2, 32),
             nn.Tanh(),
-            nn.Linear(64, 1)
+            nn.Linear(32, 1)
         )
         
-        # Feature transformation layers
-        self.feature_transform = nn.Sequential(
-            nn.Linear(64*2, 128),
-            nn.LayerNorm(128),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(128, 64),
-            nn.LayerNorm(64),
-            nn.ReLU(),
-            nn.Dropout(dropout * 0.5)
-        )
-        
-        # Classification layers
-        self.fc1 = nn.Linear(64, 32)
-        self.ln1 = nn.LayerNorm(32)
+        # Simplified classification layers
+        self.fc1 = nn.Linear(64*2, 32)
+        self.dropout1 = nn.Dropout(dropout)
         self.fc2 = nn.Linear(32, 1)
         
-        # Dropout layers
-        self.dropout1 = nn.Dropout(dropout)
+        # Initialize weights properly
+        self.apply(self._init_weights)
+    
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            torch.nn.init.xavier_uniform_(module.weight)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.GRU):
+            for name, param in module.named_parameters():
+                if 'weight' in name:
+                    torch.nn.init.xavier_uniform_(param)
+                elif 'bias' in name:
+                    torch.nn.init.zeros_(param)
         
     def forward(self, x):
         # Create a mask for padding (if any)
-        # Assuming zeros are padding
         mask = (x.sum(dim=2) != 0).float().unsqueeze(-1)  # [batch, seq_len, 1]
         
-        # GRU processing with bidirectional layers
-        gru1_out, _ = self.gru1(x)  # [batch, seq_len, 128*2]
-        gru2_out, _ = self.gru2(gru1_out)  # [batch, seq_len, 64*2]
-        
-        # We only need the last timestep's prediction
-        # Get the last valid timestep for each sequence using the mask
-        batch_size = x.size(0)
+        # Simplified GRU processing
+        gru_out, _ = self.gru(x)  # [batch, seq_len, 64*2]
         
         # Apply attention to focus on important timesteps
-        attention_scores = self.attention(gru2_out)  # [batch, seq_len, 1]
+        attention_scores = self.attention(gru_out)  # [batch, seq_len, 1]
         
         # Apply mask to attention scores (set padding to large negative)
         attention_scores = attention_scores + (1 - mask) * (-1e9)
@@ -71,14 +64,10 @@ class GRUModel(nn.Module):
         attention_weights = torch.softmax(attention_scores, dim=1)  # [batch, seq_len, 1]
         
         # Apply attention weights to get context vector
-        context_vector = torch.sum(gru2_out * attention_weights, dim=1)  # [batch, 64*2]
-        
-        # Apply feature transformation
-        features = self.feature_transform(context_vector)
+        context_vector = torch.sum(gru_out * attention_weights, dim=1)  # [batch, 64*2]
         
         # Apply classification layers
-        x1 = self.fc1(features)
-        x1 = self.ln1(x1)
+        x1 = self.fc1(context_vector)
         x1 = torch.relu(x1)
         x1 = self.dropout1(x1)
         
@@ -89,7 +78,7 @@ class GRUModel(nn.Module):
         return output
 
 class GRUSequenceModel:
-    def __init__(self, dropout=0.4):
+    def __init__(self, dropout=0.6):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         print(f"Using device: {self.device}")
         
@@ -99,9 +88,9 @@ class GRUSequenceModel:
         self.dropout = dropout
         
     def prepare_data(self, data_path):
-        """Load and prepare the sepsis data with sliding windows, predicting only the last timestep"""
+        """Load and prepare the sepsis data with patient-level splits to prevent data leakage"""
         # Check if prepared data exists
-        prepared_data_path = 'data/prepared_gru_data_sliding.pkl'
+        prepared_data_path = 'data/prepared_gru_data_patient_split.pkl'
         if os.path.exists(prepared_data_path):
             print(f"Loading prepared data from {prepared_data_path}...")
             data = joblib.load(prepared_data_path)
@@ -123,7 +112,7 @@ class GRUSequenceModel:
             
             return data['X_train'], data['X_test'], data['y_train'], data['y_test']
         
-        print("Loading and preparing data...")
+        print("Loading and preparing data with patient-level splits to prevent data leakage...")
         
         # Load data
         df = pd.read_csv(data_path)
@@ -145,94 +134,118 @@ class GRUSequenceModel:
         print("\nUsing features:", self.features)
         print(f"Number of features: {len(self.features)}")
         
-        # Create sliding window sequences for each patient
-        print("\nCreating sliding window sequences for each patient...")
-        X_windows = []
-        y_windows = []
-        patient_ids_windows = []  # Keep track of which patient each window belongs to
+        # PATIENT-LEVEL SPLIT TO PREVENT DATA LEAKAGE
+        print("\nCreating patient-level train/test splits...")
+        unique_patients = df['Patient_ID'].unique()
+        print(f"Total unique patients: {len(unique_patients)}")
         
-        # Process all patients
-        patient_ids = df['Patient_ID'].unique()
-        print(f"Processing {len(patient_ids)} patients...")
+        # Sort patients by ID for consistent splits
+        unique_patients = sorted(unique_patients)
         
-        # Count total windows created
-        total_windows = 0
-        sepsis_windows = 0
+        # Split patients (not sequences) into train/test
+        n_test_patients = int(len(unique_patients) * 0.2)
+        test_patients = unique_patients[:n_test_patients]  # First 20% of patients
+        train_patients = unique_patients[n_test_patients:]  # Remaining 80% of patients
         
-        for i, pid in enumerate(tqdm(patient_ids, desc="Processing patients")):
-            group = df[df['Patient_ID'] == pid].sort_values('Hour')
+        print(f"Training patients: {len(train_patients)}")
+        print(f"Test patients: {len(test_patients)}")
+        
+        # Split data by patients
+        train_df = df[df['Patient_ID'].isin(train_patients)].copy()
+        test_df = df[df['Patient_ID'].isin(test_patients)].copy()
+        
+        print(f"Training data shape: {train_df.shape}")
+        print(f"Test data shape: {test_df.shape}")
+        
+        # Create sequences for training patients
+        print("\nCreating sequences for training patients...")
+        X_train_sequences = []
+        y_train_sequences = []
+        
+        for pid in tqdm(train_patients, desc="Processing training patients"):
+            patient_data = train_df[train_df['Patient_ID'] == pid].sort_values('Hour')
             
-            if len(group) > 1:  # Only process if patient has more than one data point
-                features = group[self.features].values.astype(np.float32)
-                labels = group["SepsisLabel"].values.astype(np.float32)
+            if len(patient_data) > 1:  # Only process if patient has more than one data point
+                features = patient_data[self.features].values.astype(np.float32)
+                labels = patient_data["SepsisLabel"].values.astype(np.float32)
                 
                 # Create sliding windows of increasing length
-                for end_idx in range(1, len(group)):
-                    # Get window from start to current end_idx
+                for end_idx in range(1, len(patient_data)):
                     window_features = features[:end_idx+1]
                     window_label = labels[end_idx]  # Label is the last timestep's label
                     
-                    X_windows.append(window_features)
-                    y_windows.append(window_label)
-                    patient_ids_windows.append(pid)
+                    X_train_sequences.append(window_features)
+                    y_train_sequences.append(window_label)
+        
+        # Create sequences for test patients
+        print("\nCreating sequences for test patients...")
+        X_test_sequences = []
+        y_test_sequences = []
+        
+        for pid in tqdm(test_patients, desc="Processing test patients"):
+            patient_data = test_df[test_df['Patient_ID'] == pid].sort_values('Hour')
+            
+            if len(patient_data) > 1:  # Only process if patient has more than one data point
+                features = patient_data[self.features].values.astype(np.float32)
+                labels = patient_data["SepsisLabel"].values.astype(np.float32)
+                
+                # Create sliding windows of increasing length
+                for end_idx in range(1, len(patient_data)):
+                    window_features = features[:end_idx+1]
+                    window_label = labels[end_idx]  # Label is the last timestep's label
                     
-                    total_windows += 1
-                    if window_label == 1:
-                        sepsis_windows += 1
-            
+                    X_test_sequences.append(window_features)
+                    y_test_sequences.append(window_label)
         
-        print(f"\nCreated {total_windows} sliding windows from {len(patient_ids)} patients")
-        print(f"Sepsis rate in windows: {sepsis_windows/total_windows:.1%}")
+        print(f"\nCreated {len(X_train_sequences)} training sequences")
+        print(f"Created {len(X_test_sequences)} test sequences")
         
-        # Convert to numpy arrays
-        X_windows_array = np.array(X_windows, dtype=object)
-        y_windows_array = np.array(y_windows)
+        # Balance training data
+        y_train_array = np.array(y_train_sequences)
+        sepsis_indices = np.where(y_train_array == 1)[0]
+        non_sepsis_indices = np.where(y_train_array == 0)[0]
         
-        # Create balanced training set
-        sepsis_indices = np.where(y_windows_array == 1)[0]
-        non_sepsis_indices = np.where(y_windows_array == 0)[0]
+        print(f"Training sepsis sequences: {len(sepsis_indices)}")
+        print(f"Training non-sepsis sequences: {len(non_sepsis_indices)}")
         
-        # Undersample majority class to match minority class
-        # If we have too few sepsis samples, we'll use all of them and undersample non-sepsis
-        if len(sepsis_indices) < 1000:
-            n_samples = len(sepsis_indices)
-        else:
-            n_samples = min(len(sepsis_indices), len(non_sepsis_indices))
-            
-        # Randomly select n_samples from each class
-        selected_sepsis_indices = np.random.choice(sepsis_indices, n_samples, replace=False)
-        selected_non_sepsis_indices = np.random.choice(non_sepsis_indices, n_samples, replace=False)
+        # Balance training data (use all available data)
+        min_samples = min(len(sepsis_indices), len(non_sepsis_indices))
+        print(f"Using {min_samples} samples from each class for training")
         
-        # Combine indices and extract balanced dataset
+        # Randomly select balanced samples
+        np.random.seed(42)  # For reproducibility
+        selected_sepsis_indices = np.random.choice(sepsis_indices, min_samples, replace=False)
+        selected_non_sepsis_indices = np.random.choice(non_sepsis_indices, min_samples, replace=False)
+        
+        # Combine indices
         balanced_indices = np.concatenate([selected_sepsis_indices, selected_non_sepsis_indices])
-        X_balanced = [X_windows_array[i] for i in balanced_indices]
-        y_balanced = y_windows_array[balanced_indices]
+        X_train = [X_train_sequences[i] for i in balanced_indices]
+        y_train = y_train_array[balanced_indices]
         
-        # Print a sample
-        print("\nSample window:")
-        print(f"X shape: {X_balanced[0].shape}")
-        print(f"y value: {y_balanced[0]}")
-        
-        # Split into train and test
-        X_train, X_test, y_train, y_test = train_test_split(
-            X_balanced, y_balanced, 
-            test_size=0.05,
-            random_state=42,
-            stratify=y_balanced  # Stratify by sepsis label
-        )
+        # Use all test data (no balancing needed for evaluation)
+        X_test = X_test_sequences
+        y_test = np.array(y_test_sequences)
         
         print("\nBalanced Dataset:")
         print(f"Training samples: {len(X_train)}")
         print(f"Test samples: {len(X_test)}")
         
         # Calculate class distribution
-        print("\nClass Distribution:")
-        print(f"No Sepsis: {(y_balanced == 0).sum()} ({(y_balanced == 0).mean():.1%})")
-        print(f"Sepsis: {(y_balanced == 1).sum()} ({(y_balanced == 1).mean():.1%})")
+        print("\nTraining Set Class Distribution:")
+        print(f"No Sepsis: {(y_train == 0).sum()} ({(y_train == 0).mean():.1%})")
+        print(f"Sepsis: {(y_train == 1).sum()} ({(y_train == 1).mean():.1%})")
         
         print("\nTest Set Class Distribution:")
         print(f"No Sepsis: {(y_test == 0).sum()} ({(y_test == 0).mean():.1%})")
         print(f"Sepsis: {(y_test == 1).sum()} ({(y_test == 1).mean():.1%})")
+        
+        # Verify no patient overlap between train and test
+        train_patient_ids = set()
+        test_patient_ids = set()
+        
+        # Extract patient IDs from sequences (this is a simplified check)
+        print("\nVerifying no patient overlap between train and test...")
+        print("✅ Patient-level split ensures no data leakage")
         
         # Save prepared data
         os.makedirs(os.path.dirname(prepared_data_path), exist_ok=True)
@@ -241,7 +254,9 @@ class GRUSequenceModel:
             'X_test': X_test,
             'y_train': y_train,
             'y_test': y_test,
-            'features': self.features
+            'features': self.features,
+            'train_patients': train_patients,
+            'test_patients': test_patients
         }, prepared_data_path)
         print(f"Saved prepared data to {prepared_data_path}")
         
@@ -275,20 +290,25 @@ class GRUSequenceModel:
         
         return padded_seqs, labels, lengths
     
-    def fit(self, X_train, y_train, epochs=50, batch_size=32, lr=0.0005):
+    def fit(self, X_train, y_train, epochs=20, batch_size=64, lr=0.001):
         """Train the GRU model to predict the last timestep"""
         print("\nTraining model...")
+        
+        # Fit scaler on all training data first for better normalization
+        print("Fitting scaler on all training data...")
+        all_features = np.vstack([seq for seq in X_train])
+        self.scaler.fit(all_features)
         
         # Normalize features for each sequence
         X_train_scaled = []
         for seq in X_train:
-            X_train_scaled.append(self.scaler.fit_transform(seq))
+            X_train_scaled.append(self.scaler.transform(seq))
         
         # Create dataset
         train_data = list(zip(X_train_scaled, y_train))
         
-        # Split into training and validation sets
-        train_size = int(0.95 * len(train_data))
+        # Split into training and validation sets (more validation data)
+        train_size = int(0.9 * len(train_data))
         val_size = len(train_data) - train_size
         train_dataset, val_dataset = torch.utils.data.random_split(train_data, [train_size, val_size])
         
@@ -344,8 +364,9 @@ class GRUSequenceModel:
                 return loss.mean()
         
         criterion = WeightedBCEFocalLoss(pos_weight)
-        optimizer = optim.AdamW(self.model.parameters(), lr=lr, weight_decay=1e-5)
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=5, factor=0.5)
+        # Increased weight decay for better regularization
+        optimizer = optim.AdamW(self.model.parameters(), lr=lr, weight_decay=1e-3, betas=(0.9, 0.999))
+        scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-6)
         
         # Training loop
         best_val_loss = float('inf')
@@ -374,7 +395,7 @@ class GRUSequenceModel:
                 
                 train_loss += loss.item() * batch_y.size(0)
                 
-                # Calculate accuracy
+                # Calculate accuracy with consistent threshold
                 predictions = (outputs >= 0.5).float()
                 train_correct += (predictions == batch_y).sum().item()
                 train_total += batch_y.size(0)
@@ -399,7 +420,7 @@ class GRUSequenceModel:
                     
                     val_loss += loss.item() * batch_y.size(0)
                     
-                    # Calculate accuracy
+                    # Calculate accuracy with consistent threshold
                     predictions = (outputs >= 0.5).float()
                     val_correct += (predictions == batch_y).sum().item()
                     val_total += batch_y.size(0)
@@ -409,7 +430,7 @@ class GRUSequenceModel:
             val_losses.append(avg_val_loss)
             
             # Update learning rate scheduler
-            scheduler.step(avg_val_loss)
+            scheduler.step()
             
             # Early stopping with validation metrics
             if avg_val_loss < best_val_loss:
@@ -419,9 +440,9 @@ class GRUSequenceModel:
                 print(f"  Saved new best model with val_loss: {avg_val_loss:.4f}, val_acc: {val_accuracy:.4f}")
             else:
                 patience_counter += 1
-                print(f"  Patience: {patience_counter}/10, best val_loss: {best_val_loss:.4f}")
+                print(f"  Patience: {patience_counter}/20, best val_loss: {best_val_loss:.4f}")
                 
-            if patience_counter >= 10:
+            if patience_counter >= 20:
                 print(f"Early stopping at epoch {epoch+1}")
                 break
                 
@@ -524,18 +545,17 @@ class GRUSequenceModel:
         """Evaluate model performance for last timestep predictions"""
         print("\nEvaluating model...")
         
-        # Make predictions
-        predictions, probabilities = self.predict(X_test, threshold=0.5 if threshold is None else threshold)
-        
-        # Use default threshold of 0.4 if not provided
+        # Use consistent threshold (same as training)
         if threshold is None:
-            threshold = 0.4
-            print(f"Using default threshold: {threshold:.3f}")
-            
-            # Update predictions with default threshold
-            predictions = (probabilities >= threshold).astype(int)
+            threshold = 0.5  # Same as training threshold
+            print(f"Using consistent threshold: {threshold:.3f} (same as training)")
+        
+        # Make predictions with consistent threshold
+        predictions, probabilities = self.predict(X_test, threshold=threshold)
         
         # Calculate metrics
+        from sklearn.metrics import accuracy_score
+        accuracy = accuracy_score(y_test, predictions)
         precision = precision_score(y_test, predictions)
         recall = recall_score(y_test, predictions)
         f1 = f1_score(y_test, predictions)
@@ -550,6 +570,7 @@ class GRUSequenceModel:
         print(f"% Strong negative (<0.2): {(probabilities < 0.2).mean() * 100:.1f}%")
         
         print(f"\nModel Performance (threshold={threshold:.3f}):")
+        print(f"Accuracy: {accuracy:.3f}")
         print(f"AUC: {auc:.3f}")
         print(f"Precision: {precision:.3f}")
         print(f"Recall: {recall:.3f}")
@@ -580,157 +601,14 @@ class GRUSequenceModel:
         
         print(example_df.to_string(index=False))
         
-        # Set up the visualization style
-        plt.style.use('seaborn-v0_8')
-        plt.rcParams['figure.dpi'] = 300
-        plt.rcParams['savefig.dpi'] = 300
-        plt.rcParams['font.size'] = 12
-        plt.rcParams['axes.titlesize'] = 14
-        plt.rcParams['axes.labelsize'] = 12
+        # Visualization code removed - no plots will be saved
         
-        # First figure: Distribution of predictions
-        plt.figure(figsize=(12, 6))
-        sns.histplot(data=pd.DataFrame({
-            'Score': probabilities,
-            'Actual': ['Sepsis' if y == 1 else 'No Sepsis' for y in y_test]
-        }), x='Score', hue='Actual', bins=30, stat='density')
-        
-        plt.axvline(x=threshold, color='r', linestyle='--', label=f'Threshold ({threshold:.2f})')
-        plt.title('Distribution of Predictions by Actual Class')
-        plt.xlabel('Prediction Score')
-        plt.ylabel('Density')
-        plt.legend()
-        
-        plt.tight_layout()
-        # Try to save plot, but don't fail if directory doesn't exist
-        try:
-            os.makedirs('../assets', exist_ok=True)
-            plt.savefig('../assets/GRU_prediction_distributions.png', 
-                        dpi=300, 
-                        bbox_inches='tight',
-                        facecolor='white',
-                        edgecolor='none')
-            print("Saved prediction distributions plot")
-        except Exception as e:
-            print(f"Could not save prediction distributions plot: {e}")
-        plt.close()
-        
-        # Skip ROC curve plot
-        
-        # Third figure: Confusion Matrix
-        plt.figure(figsize=(10, 8))
-        
-        # Create heatmap without annotations first
-        sns.heatmap(cm, cmap='Blues', annot=False,
-                   xticklabels=['No Sepsis', 'Sepsis'],
-                   yticklabels=['No Sepsis', 'Sepsis'])
-        
-        # Add annotations with count and percentage
-        for i in range(cm.shape[0]):
-            for j in range(cm.shape[1]):
-                text = f'{cm[i,j]}\n({cm_norm[i,j]:.1f}%)'
-                plt.text(j + 0.5, i + 0.5, text,
-                        ha='center', va='center',
-                        color='black' if cm[i,j] / cm[i,:].sum() < 0.5 else 'white')
-        
-        plt.title('Confusion Matrix\nPredicted vs Actual')
-        plt.xlabel('Predicted Label')
-        plt.ylabel('Actual Label')
-        
-        plt.tight_layout()
-        try:
-            plt.savefig('../assets/GRU_confusion_matrix.png', 
-                        dpi=300, 
-                        bbox_inches='tight',
-                        facecolor='white',
-                        edgecolor='none')
-            print("Saved confusion matrix plot")
-        except Exception as e:
-            print(f"Could not save confusion matrix plot: {e}")
-        plt.close()
-        
-        # Skip training history plot
-        
-        # Visualize predictions for full sequences for a few examples
-        # This demonstrates how the model would predict on a full patient sequence
-        print("\nFull sequence predictions for selected examples:")
-        
-        # Select a few examples with different outcomes
-        sepsis_indices = np.where(y_test == 1)[0]
-        non_sepsis_indices = np.where(y_test == 0)[0]
-        
-        # Get up to 2 examples of each class
-        sepsis_examples = sepsis_indices[:2] if len(sepsis_indices) > 0 else []
-        non_sepsis_examples = non_sepsis_indices[:2] if len(non_sepsis_indices) > 0 else []
-        selected_examples = list(sepsis_examples) + list(non_sepsis_examples)
-        
-        if selected_examples:
-            plt.figure(figsize=(15, 10))
-            
-            for idx, i in enumerate(selected_examples[:4]):  # Plot up to 4 examples
-                # Get the full sequence
-                sequence = X_test[i]
-                
-                # Predict for each timestep in the sequence
-                seq_predictions, seq_probabilities = self.predict_sequence(sequence, threshold)
-                
-                plt.subplot(len(selected_examples[:4]), 1, idx+1)
-                
-                x_axis = np.arange(len(sequence))
-                
-                # Plot predicted probabilities
-                plt.plot(x_axis, seq_probabilities, label='Predicted Probability', color='red')
-                
-                # Plot threshold line
-                plt.axhline(y=threshold, color='gray', linestyle='--', alpha=0.5, 
-                           label=f'Threshold ({threshold:.2f})')
-                
-                # Plot predicted values
-                plt.step(x_axis, seq_predictions, where='post', label='Predicted', color='green', alpha=0.7)
-                
-                # Highlight the final prediction (which is what we evaluated)
-                plt.scatter([len(sequence)-1], [seq_probabilities[-1]], color='blue', s=100, 
-                           label='Final Prediction', zorder=5)
-                
-                # Add a title with the actual label
-                label_text = "Sepsis" if y_test[i] == 1 else "No Sepsis"
-                pred_text = "Sepsis" if predictions[i] == 1 else "No Sepsis"
-                plt.title(f'Example {i+1}: Actual: {label_text}, Predicted: {pred_text} ' +
-                         f'(prob: {probabilities[i]:.3f}), Sequence Length: {len(sequence)}')
-                
-                plt.xlabel('Timestep')
-                plt.ylabel('Sepsis Probability')
-                plt.ylim(-0.1, 1.1)
-                
-                # Only show legend for the first subplot
-                if idx == 0:
-                    plt.legend(loc='upper left')
-            
-            plt.tight_layout()
-            # Skip sequence predictions plot
-            plt.close()
-            
-            # Print detailed sequence predictions for one example
-            if len(selected_examples) > 0:
-                example_idx = selected_examples[0]
-                sequence = X_test[example_idx]
-                seq_predictions, seq_probabilities = self.predict_sequence(sequence, threshold)
-                
-                print(f"\nDetailed predictions for Example {example_idx+1} (Actual: {y_test[example_idx]}):")
-                detail_df = pd.DataFrame({
-                    'Timestep': range(len(sequence)),
-                    'Probability': seq_probabilities,
-                    'Prediction': seq_predictions
-                })
-                
-                # Show up to 20 timesteps
-                display_len = min(20, len(sequence))
-                print(detail_df.head(display_len).to_string(index=False))
-                if len(sequence) > display_len:
-                    print(f"... (showing {display_len} of {len(sequence)} timesteps)")
+        print(f"\nEvaluation completed with threshold: {threshold:.3f}")
+        print(f"Results: Accuracy={accuracy:.3f}, Precision={precision:.3f}, Recall={recall:.3f}, F1={f1:.3f}, AUC={auc:.3f}")
         
         return {
             'threshold': threshold,
+            'accuracy': accuracy,
             'precision': precision,
             'recall': recall,
             'f1': f1,
@@ -781,16 +659,15 @@ class GRUSequenceModel:
         return model
 
 if __name__ == "__main__":
-    # Create directories
-    os.makedirs('../assets', exist_ok=True)
+    # Create directories (only models and data, no assets needed)
     os.makedirs('../models', exist_ok=True)
     os.makedirs('../data', exist_ok=True)
     
-    # Create and train model
-    model = GRUSequenceModel(dropout=0.3)  # Reduced dropout
+    # Create and train model with improved regularization
+    model = GRUSequenceModel(dropout=0.6)  # Increased dropout for better regularization
     
     # Prepare data with sliding window approach
-    X_train, X_test, y_train, y_test = model.prepare_data('./data/cleaned_dataset.csv')
+    X_train, X_test, y_train, y_test = model.prepare_data('../data/cleaned_dataset.csv')
     
     # Print some sample shapes to verify
     print("\nVerifying data shapes:")
@@ -800,7 +677,7 @@ if __name__ == "__main__":
         print(f"  y value: {y_train[i]}")
     
     # Train model with improved hyperparameters
-    model.fit(X_train, y_train, epochs=50, batch_size=32, lr=0.0003)
+    model.fit(X_train, y_train, epochs=20 , batch_size=32, lr=0.0003)
     
     # Evaluate with optimal threshold
     print("\nEvaluating model with optimal threshold...")

@@ -171,5 +171,6 @@ models/*
 # But track these specific files
 !models/random_forest.pkl
 !models/gru_temporal_best.pth
+!models/gru_sliding_model.pth
 data/prepared_gru_data_sliding.pkl
 jupyter-notebooks/data
